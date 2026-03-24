@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmadProx Overlay</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="overlay-styles.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Drag handle (interactive mode only) -->
+    <div class="drag-handle"><div class="drag-pill"></div></div>
+
+    <!-- Scrolling feed -->
+    <div class="feed-scroll" id="feed-scroll">
+      <div class="feed-cards" id="feed-cards"></div>
+    </div>
+
+    <!-- Bottom bar -->
+    <div class="bottom-bar" id="bottom-bar">
+      <div class="bar-left">
+        <span class="connection-dot" id="connection-dot"></span>
+        <span class="shield-badge">Always Invisible</span>
+        <span class="mode-label" id="mode-label">Connecting</span>
+      </div>
+      <div class="bar-center">
+        <div class="speed-group">
+          <span class="speed-btn" data-speed="1">1</span>
+          <span class="speed-btn" data-speed="2">2</span>
+          <span class="speed-btn" data-speed="3">3</span>
+          <span class="speed-btn active" data-speed="4">4</span>
+          <span class="speed-btn" data-speed="5">5</span>
+        </div>
+      </div>
+      <div class="bar-right">
+        <span class="bar-tag" id="scroll-tag">Scroll ON</span>
+        <span class="bar-tag" id="opacity-tag">80%</span>
+      </div>
+    </div>
+
+    <!-- Shortcuts reference -->
+    <div class="shortcuts-row">
+      <kbd>Cmd+Shift+H</kbd>Hide <kbd>Cmd+Shift+P</kbd>Pause <kbd>Cmd+Shift+L</kbd>Grab <kbd>Cmd+Shift+A</kbd>Scroll <kbd>Cmd+Shift+1-5</kbd>Speed
+    </div>
+  </div>
+
+  <script src="overlay-renderer.js"></script>
+</body>
+</html>

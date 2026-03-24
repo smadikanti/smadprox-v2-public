@@ -1,0 +1,255 @@
+/* === SmadProx v2 Overlay Styles ===
+ *
+ * Lifted from reverse-engineer-littlebird/electron/styles.css, then modified:
+ *   - Added .operator card styles (orange border, pulsing live)
+ *   - Added .filler card styles (dashed border, instruction, progress bar)
+ *   - Added .demoted state (30% opacity for dismissed fillers)
+ *   - Added .previous state (40% opacity for read cards)
+ *   - Added cross-fade transition for card_update
+ *   - Added typing cursor animation
+ */
+
+:root {
+  --bg: hsla(210, 5%, 8%, 0.92);
+  --surface: hsla(210, 5%, 11%, 0.95);
+  --surface-hover: hsla(210, 5%, 14%, 1);
+  --border-subtle: hsla(210, 5%, 14%, 0.5);
+  --border-default: hsla(210, 5%, 17%, 0.5);
+  --fg: hsla(45, 30%, 90%, 1);
+  --fg-subtle: hsla(45, 10%, 75%, 1);
+  --fg-muted: hsla(45, 2%, 48%, 1);
+  --gray-3: #222222; --gray-4: #2a2a2a; --gray-5: #313131;
+  --gray-6: #3a3a3a; --gray-8: #606060; --gray-9: #6e6e6e;
+  --gray-10: #7b7b7b; --gray-12: #eeeeee;
+  --green: #30a46c;
+  --blue: #3b82f6;
+  --orange: #f97316;
+  --yellow: #eab308;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --radius: 10px;
+  --t: 120ms ease;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%; overflow: hidden;
+  font-family: var(--font); font-size: 14px;
+  color: var(--fg); background: transparent;
+  -webkit-font-smoothing: antialiased;
+  user-select: none; cursor: default;
+}
+
+/* === Layout === */
+.app {
+  display: flex; flex-direction: column;
+  height: 100vh; width: 100vw;
+  background: var(--bg);
+  border-radius: 16px; overflow: hidden;
+  border: 1px solid hsla(0,0%,100%,0.07);
+  box-shadow: 0 0 0 0.5px hsla(0,0%,100%,0.04), 0 8px 40px rgba(0,0,0,0.45),
+    inset 0 0.5px 0 hsla(0,0%,100%,0.05);
+}
+
+/* === Interactive mode === */
+body.interactive .app { border-color: hsla(0,0%,100%,0.12); }
+body.interactive .drag-handle { display: flex; -webkit-app-region: drag; cursor: grab; }
+body.interactive .bottom-bar { -webkit-app-region: drag; cursor: grab; }
+body.interactive .shortcuts-row { -webkit-app-region: drag; }
+body.interactive .feed-scroll { -webkit-app-region: no-drag; cursor: default; }
+body.interactive .speed-btn { pointer-events: auto; cursor: pointer; -webkit-app-region: no-drag; }
+body.interactive .speed-btn:hover { background: var(--gray-5); color: var(--gray-12); }
+
+/* === Drag Handle === */
+.drag-handle {
+  display: none; align-items: center; justify-content: center;
+  padding: 5px 0 2px; flex-shrink: 0;
+}
+.drag-pill { width: 32px; height: 3.5px; border-radius: 2px; background: var(--gray-6); }
+
+/* === Scrolling Feed === */
+.feed-scroll { flex: 1; overflow-y: scroll; padding: 10px 10px; -webkit-app-region: no-drag; }
+.feed-cards { display: flex; flex-direction: column; gap: 8px; }
+
+/* ─── Card Base ─────────────────────────────────────────────────────────── */
+.feed-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  padding: 12px 14px 12px 18px;
+  border-left: 3px solid var(--blue);
+  animation: fadeIn 180ms ease-out;
+  transition: opacity 300ms ease, border-color 200ms ease;
+}
+
+/* ─── AI Card ───────────────────────────────────────────────────────────── */
+.feed-card.ai { border-left-color: var(--blue); }
+.feed-card.ai.current {
+  border-left-color: var(--blue);
+  background: hsla(217, 50%, 14%, 0.6);
+  box-shadow: 0 0 8px 0 rgba(59,130,246,0.08);
+}
+
+/* ─── Operator Card ─────────────────────────────────────────────────────── */
+.feed-card.operator { border-left-color: var(--orange); }
+.feed-card.operator.live {
+  animation: operatorPulse 1.5s ease-in-out infinite, fadeIn 180ms ease-out;
+}
+@keyframes operatorPulse {
+  0%, 100% { border-left-color: var(--orange); box-shadow: none; }
+  50% { border-left-color: #fb923c; box-shadow: 0 0 8px 0 rgba(249,115,22,0.15); }
+}
+
+/* ─── Filler Card ───────────────────────────────────────────────────────── */
+.feed-card.filler {
+  border-left: 3px dashed var(--fg-muted);
+  background: hsla(210, 5%, 10%, 0.7);
+}
+
+/* ─── Whiteboard Card ───────────────────────────────────────────────────── */
+.feed-card.whiteboard {
+  border-left-color: var(--yellow);
+}
+.feed-card.whiteboard .card-body {
+  font-family: 'SF Mono', Monaco, 'Fira Code', monospace;
+  font-size: 12.5px;
+}
+
+/* ─── State Classes ─────────────────────────────────────────────────────── */
+.feed-card.previous { opacity: 0.4; }
+.feed-card.demoted { opacity: 0.3; }
+
+/* ─── Card Header ───────────────────────────────────────────────────────── */
+.card-header {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 6px;
+}
+.card-status-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+.card-status-dot.ai { background: var(--blue); }
+.card-status-dot.operator { background: var(--orange); }
+.card-status-dot.filler { background: var(--fg-muted); }
+
+.card-label {
+  font-size: 10px; font-weight: 600; color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+
+/* ─── Card Body ─────────────────────────────────────────────────────────── */
+.card-body {
+  font-size: 13.5px; line-height: 1.65; color: var(--gray-12);
+  transition: opacity 150ms ease-out;
+}
+.card-body.updating { opacity: 0.4; }
+
+/* ─── Typing Cursor ─────────────────────────────────────────────────────── */
+.typing-cursor {
+  display: inline;
+  color: var(--orange);
+  animation: blink-cursor 1s step-end infinite;
+}
+@keyframes blink-cursor {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* ─── Filler Instruction ────────────────────────────────────────────────── */
+.card-instruction {
+  font-size: 10px; color: var(--fg-muted); font-style: italic;
+  margin-top: 8px; padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ─── Filler Progress Bar ───────────────────────────────────────────────── */
+.card-progress {
+  height: 3px; background: var(--gray-4); border-radius: 2px;
+  margin-top: 8px; overflow: hidden;
+}
+.card-progress-fill {
+  height: 100%; background: var(--fg-muted); border-radius: 2px;
+  width: 0%; animation: progressFill linear forwards;
+}
+@keyframes progressFill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+/* ─── Animations ────────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* === Connection Dot === */
+.connection-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--gray-6);
+  transition: background 200ms;
+}
+.connection-dot.connected { background: var(--green); }
+
+/* === Bottom Bar === */
+.bottom-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 12px;
+  background: hsla(210, 5%, 7%, 0.96);
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0; gap: 10px;
+}
+.bar-left, .bar-center, .bar-right { display: flex; align-items: center; gap: 8px; }
+.bar-right { gap: 6px; }
+
+.shield-badge {
+  font-size: 8.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: #4ade80;
+  background: hsla(140, 50%, 18%, 0.45);
+  padding: 2px 6px; border-radius: 3px;
+  border: 1px solid hsla(140, 50%, 28%, 0.25);
+}
+
+.mode-label { font-size: 9px; color: var(--gray-9); font-weight: 500; }
+.mode-label.interactive { color: var(--orange); }
+
+.speed-group { display: flex; gap: 2px; }
+.speed-btn {
+  width: 18px; height: 18px; border-radius: 4px;
+  background: var(--gray-4); color: var(--gray-9);
+  font-size: 9.5px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--t), color var(--t);
+  pointer-events: none;
+}
+.speed-btn.active { background: var(--orange); color: #111; }
+
+.bar-tag {
+  font-size: 8.5px; color: var(--gray-9); font-weight: 500;
+  background: var(--gray-4); padding: 2px 5px; border-radius: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* === Shortcuts Row === */
+.shortcuts-row {
+  display: flex; align-items: center; justify-content: center;
+  gap: 3px; padding: 3px 8px;
+  background: hsla(210, 5%, 5%, 0.96);
+  border-top: 1px solid hsla(210, 5%, 10%, 0.4);
+  flex-shrink: 0; flex-wrap: nowrap; overflow: hidden;
+  font-size: 8px; color: var(--gray-8); white-space: nowrap;
+  letter-spacing: 0.1px;
+}
+.shortcuts-row kbd {
+  font-family: var(--font); font-size: 7.5px;
+  color: var(--gray-10);
+  background: var(--gray-3); padding: 1px 3px;
+  border-radius: 2px; border: 1px solid var(--gray-4);
+  margin: 0 1px;
+}
+
+/* === Scrollbar === */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--gray-4); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--gray-5); }
