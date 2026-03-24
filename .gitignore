@@ -1,0 +1,12 @@
+node_modules/
+dist/
+out/
+.env
+.env.local
+*.dmg
+*.zip
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
