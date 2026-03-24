@@ -561,3 +561,88 @@ async def get_session_messages(session_id: str) -> list[dict]:
         )
         resp.raise_for_status()
         return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# v2: Script Generation & Candidate Submissions
+# ---------------------------------------------------------------------------
+
+async def get_submission(submission_id: str) -> dict | None:
+    """Get a candidate submission by ID."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{_rest_url('candidate_submissions')}?id=eq.{submission_id}&select=*",
+            headers=_service_headers(),
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        return rows[0] if rows else None
+
+
+async def get_prior_scripts(candidate_id: str) -> list[dict]:
+    """Get all previous scripts for a candidate, newest first."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{_rest_url('interview_scripts')}?candidate_id=eq.{candidate_id}&select=*&order=created_at.desc",
+            headers=_service_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def get_latest_script(candidate_id: str) -> dict | None:
+    """Get the most recent script for a candidate."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{_rest_url('interview_scripts')}?candidate_id=eq.{candidate_id}&status=eq.ready&select=*&order=created_at.desc&limit=1",
+            headers=_service_headers(),
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        return rows[0] if rows else None
+
+
+async def store_script(
+    candidate_id: str,
+    submission_id: str,
+    company: str,
+    round_type: str,
+    script_content: str,
+    prompt_hash: str,
+) -> dict:
+    """Store a generated script in the interview_scripts table."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            _rest_url("interview_scripts"),
+            headers={**_service_headers(), "Prefer": "return=representation"},
+            json={
+                "candidate_id": candidate_id,
+                "submission_id": submission_id,
+                "company": company,
+                "round_type": round_type,
+                "script_content": script_content,
+                "prompt_hash": prompt_hash,
+                "status": "ready",
+            },
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        return rows[0] if rows else {}
+
+
+async def list_candidates_with_scripts() -> list[dict]:
+    """List all candidates that have generated scripts, with latest script status."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{_rest_url('interview_scripts')}?select=candidate_id,company,round_type,status,created_at&order=created_at.desc",
+            headers=_service_headers(),
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        # Deduplicate by candidate_id, keep most recent
+        seen = {}
+        for row in rows:
+            cid = row.get("candidate_id", "")
+            if cid not in seen:
+                seen[cid] = row
+        return list(seen.values())

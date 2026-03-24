@@ -1134,6 +1134,82 @@ async def dashboard_websocket(websocket: WebSocket, session_id: str):
                         f"gap answers for {session_id}"
                     )
 
+            # ─── v2: Load candidate by ID ─────────────────────────
+            elif data.get("type") == "load_candidate":
+                candidate_id = data.get("candidate_id", "").strip()
+                if not candidate_id:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "candidate_id is required",
+                    })
+                else:
+                    logger.info(f"[Dashboard] Loading candidate {candidate_id}")
+                    try:
+                        # Fetch latest script from Supabase
+                        script_row = await db.get_latest_script(candidate_id)
+                        if script_row and script_row.get("script_content"):
+                            # Load script as a context document
+                            session.context_docs = [{
+                                "doc_type": "script",
+                                "name": "script.md",
+                                "content": script_row["script_content"],
+                            }]
+                            # Compile strategy from the loaded script
+                            from app.strategy import compile_strategy
+                            brief = await compile_strategy(
+                                session.context_docs,
+                                explicit_round_type=script_row.get("round_type", ""),
+                            )
+                            session.strategy_brief = brief.brief_text
+                            session.seniority_level = brief.seniority_level
+                            session.round_type = brief.round_type
+                            session.spoken_rules = brief.spoken_rules
+
+                            await websocket.send_json({
+                                "type": "context_ack",
+                                "status": "ok",
+                                "script_status": script_row.get("status", "ready"),
+                                "message": f"Loaded script for {candidate_id} ({brief.round_type}, {brief.seniority_level})",
+                                "strategy_compiled": True,
+                                "round_type": brief.round_type,
+                                "seniority_level": brief.seniority_level,
+                            })
+                        else:
+                            await websocket.send_json({
+                                "type": "context_ack",
+                                "status": "no_script",
+                                "script_status": "missing",
+                                "message": f"No script found for candidate {candidate_id}",
+                            })
+                    except Exception as e:
+                        logger.error(f"[Dashboard] load_candidate error: {e}")
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": f"Failed to load candidate: {e}",
+                        })
+
+            # ─── v2: Operator speech relay to overlay ─────────────
+            elif data.get("type") == "operator_speak_start":
+                # Freeze AI cards on overlay, operator is live
+                await send_to_overlay(session, {"type": "operator_speak_start"})
+                logger.info(f"[Dashboard] Operator speaking for {session_id}")
+
+            elif data.get("type") == "operator_card":
+                # Relay operator speech as a card to overlay
+                card_msg = {
+                    "type": "operator_card",
+                    "card_id": data.get("card_id", ""),
+                    "text": data.get("text", ""),
+                    "is_final": data.get("is_final", False),
+                    "is_operator": True,
+                }
+                await send_to_overlay(session, card_msg)
+
+            elif data.get("type") == "operator_speak_end":
+                # Resume AI cards on overlay
+                await send_to_overlay(session, {"type": "operator_speak_end"})
+                logger.info(f"[Dashboard] Operator stopped speaking for {session_id}")
+
             elif data.get("type") == "relay_card":
                 card_msg = data.get("card", {})
                 if card_msg and session.overlay_viewers:
@@ -1676,3 +1752,90 @@ def stop_credit_metering(session_id: str):
     if task and not task.done():
         task.cancel()
         logger.info(f"[Metering] Stopped for session {session_id}")
+
+
+# ---------------------------------------------------------------------------
+# v2: Script Generation (replaces Cursor)
+# ---------------------------------------------------------------------------
+
+class GenerateScriptRequest(BaseModel):
+    submission_id: str
+
+
+@app.post("/api/generate-script/{submission_id}")
+async def generate_script_endpoint(submission_id: str):
+    """
+    Generate script.md from a candidate submission.
+    Triggered by submission portal webhook or manual dashboard action.
+    """
+    from app.script_generator import generate_and_store_script
+
+    logger.info(f"[ScriptGen] Starting generation for submission {submission_id}")
+
+    try:
+        result = await generate_and_store_script(
+            supabase_client=db,
+            submission_id=submission_id,
+            on_status=lambda msg: logger.info(f"[ScriptGen] {msg}"),
+        )
+
+        # Notify any connected dashboards
+        candidate_id = result.get("candidate_id", "")
+        for sid, session in dual_sessions.items():
+            if session.dashboard_viewers:
+                await send_to_dashboard(session, {
+                    "type": "script_ready",
+                    "candidate_id": candidate_id,
+                    "script_status": "ready",
+                })
+
+        logger.info(
+            f"[ScriptGen] Script generated for {candidate_id}: "
+            f"script_id={result.get('script_id')}"
+        )
+        return result
+
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        logger.error(f"[ScriptGen] Generation failed: {e}")
+        raise HTTPException(500, f"Script generation failed: {e}")
+
+
+@app.get("/api/candidates")
+async def list_candidates():
+    """List all candidates with generated scripts."""
+    try:
+        candidates = await db.list_candidates_with_scripts()
+        return {"candidates": candidates}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/generate-script-async/{submission_id}")
+async def generate_script_async_endpoint(submission_id: str):
+    """
+    Same as above but runs in background. Returns immediately.
+    """
+    from app.script_generator import generate_and_store_script
+
+    async def _run():
+        try:
+            result = await generate_and_store_script(
+                supabase_client=db,
+                submission_id=submission_id,
+                on_status=lambda msg: logger.info(f"[ScriptGen] {msg}"),
+            )
+            candidate_id = result.get("candidate_id", "")
+            for sid, session in dual_sessions.items():
+                if session.dashboard_viewers:
+                    await send_to_dashboard(session, {
+                        "type": "script_ready",
+                        "candidate_id": candidate_id,
+                        "script_status": "ready",
+                    })
+        except Exception as e:
+            logger.error(f"[ScriptGen] Async generation failed: {e}")
+
+    asyncio.create_task(_run())
+    return {"status": "generating", "submission_id": submission_id}

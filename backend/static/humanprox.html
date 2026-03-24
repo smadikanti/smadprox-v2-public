@@ -439,10 +439,18 @@
     <div class="toolbar-sep"></div>
     <div class="connect-group">
       <div class="status-dot" id="status-dot"></div>
-      <input id="session-input" placeholder="Session ID or pick below" value="" onfocus="openPicker()" autocomplete="off">
-      <button class="btn btn-outline btn-sm" onclick="refreshSessions()" title="Refresh sessions">&#x21bb;</button>
+      <input id="session-input" placeholder="Candidate ID or Session ID" value="" onfocus="openPicker()" autocomplete="off">
+      <button class="btn btn-outline btn-sm" onclick="refreshCandidates()" title="Refresh candidates">&#x21bb;</button>
       <button class="btn" id="connect-btn">Connect</button>
       <div class="session-picker" id="session-picker"></div>
+    </div>
+    <div class="toolbar-sep"></div>
+    <!-- v2: Operator mic toggle -->
+    <div style="display:flex;align-items:center;gap:6px;">
+      <button class="btn btn-sm" id="operator-mic-btn" onclick="toggleOperatorMic()" style="background:var(--surface);border:1px solid var(--border);font-size:11px;">
+        Mic OFF
+      </button>
+      <span id="operator-mode-indicator" style="font-size:10px;color:var(--dim);font-weight:600;">AI DRIVING</span>
     </div>
     <div class="toolbar-sep"></div>
 
@@ -649,6 +657,78 @@ async function refreshSessions() {
   }
 }
 
+// v2: Also fetch candidates with scripts
+async function refreshCandidates() {
+  try {
+    const proto = location.protocol;
+    const host = location.host;
+    // Fetch both active sessions AND candidates with scripts
+    const [sessResp, candResp] = await Promise.all([
+      fetch(`${proto}//${host}/api/hp/sessions`).catch(() => null),
+      fetch(`${proto}//${host}/api/candidates`).catch(() => null),
+    ]);
+    const sessions = sessResp ? (await sessResp.json()).sessions || [] : [];
+    const candidates = candResp ? (await candResp.json()).candidates || [] : [];
+    renderPickerV2(sessions, candidates);
+  } catch (e) {
+    pickerEl.innerHTML = '<div class="session-picker-empty">Failed to load</div>';
+  }
+}
+
+function renderPickerV2(sessions, candidates) {
+  let html = '';
+  // Active sessions first
+  if (sessions.length) {
+    html += '<div style="padding:6px 14px;font-size:10px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Active Sessions</div>';
+    html += sessions.map(s => {
+      const mins = Math.floor(s.elapsed_seconds / 60);
+      const secs = s.elapsed_seconds % 60;
+      const time = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+      const streams = [s.has_interviewer ? 'sys' : '', s.has_candidate ? 'mic' : ''].filter(Boolean).join('+') || 'waiting';
+      return `<div class="session-pick-item" onclick="pickSession('${s.session_id}')">
+        <div class="spi-dot" style="background:var(--green)"></div>
+        <div class="spi-info">
+          <div class="spi-name">${s.candidate_name}</div>
+          <div class="spi-meta">${time} &middot; ${streams}</div>
+          <div class="spi-sid">${s.session_id}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  // Candidates with scripts
+  if (candidates.length) {
+    html += '<div style="padding:6px 14px;font-size:10px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:4px;">Candidates with Scripts</div>';
+    html += candidates.map(c => {
+      const status = c.status === 'ready' ? '&#x2713; Ready' : c.status;
+      return `<div class="session-pick-item" onclick="loadCandidate('${c.candidate_id}')">
+        <div class="spi-dot" style="background:var(--accent)"></div>
+        <div class="spi-info">
+          <div class="spi-name">${c.candidate_id}</div>
+          <div class="spi-meta">${c.company || ''} &middot; ${c.round_type || ''} &middot; ${status}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  if (!html) {
+    html = '<div class="session-picker-empty">No active sessions or candidates.<br>Waiting for connections...</div>';
+  }
+  pickerEl.innerHTML = html;
+}
+
+// v2: Load candidate by ID — sends load_candidate message over WebSocket
+function loadCandidate(candidateId) {
+  sessionInput.value = candidateId;
+  closePicker();
+  // First connect to the session (uses candidate_id as session_id)
+  doConnect();
+  // Then send load_candidate to fetch and load their script
+  setTimeout(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'load_candidate', candidate_id: candidateId }));
+    }
+  }, 500);
+}
+
 function renderPicker(sessions) {
   if (!sessions.length) {
     pickerEl.innerHTML = '<div class="session-picker-empty">No active sessions.<br>Waiting for candidates to connect...</div>';
@@ -671,10 +751,10 @@ function renderPicker(sessions) {
 }
 
 function openPicker() {
-  refreshSessions();
+  refreshCandidates();
   pickerEl.classList.add('open');
   if (pickerRefreshTimer) clearInterval(pickerRefreshTimer);
-  pickerRefreshTimer = setInterval(refreshSessions, 4000);
+  pickerRefreshTimer = setInterval(refreshCandidates, 4000);
 }
 
 function closePicker() {
@@ -1609,6 +1689,168 @@ handleMessage = function(msg) {
 
 // Auto-connect if session ID is in URL
 if (SESSION_ID_PARAM) setTimeout(doConnect, 300);
+
+// ═══════════════════════════════════════════════════════════════════
+// v2: Operator Microphone — capture speech, transcribe, relay as cards
+// ═══════════════════════════════════════════════════════════════════
+
+let operatorMicActive = false;
+let operatorMicStream = null;
+let operatorAudioCtx = null;
+let operatorDgWs = null;
+let operatorCardId = null;
+let operatorCardText = '';
+let operatorSilenceTimer = null;
+const OPERATOR_SILENCE_MS = 3000;
+
+const operatorMicBtn = document.getElementById('operator-mic-btn');
+const operatorModeIndicator = document.getElementById('operator-mode-indicator');
+
+async function toggleOperatorMic() {
+  if (operatorMicActive) {
+    stopOperatorMic();
+  } else {
+    await startOperatorMic();
+  }
+}
+
+async function startOperatorMic() {
+  try {
+    operatorMicStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true }
+    });
+
+    // Connect to Deepgram for transcription
+    const dgUrl = 'wss://api.deepgram.com/v1/listen?model=nova-2&language=en&smart_format=true&interim_results=true&endpointing=300';
+    operatorDgWs = new WebSocket(dgUrl, ['token', DEEPGRAM_KEY]);
+
+    operatorDgWs.onopen = () => {
+      operatorMicActive = true;
+      operatorMicBtn.textContent = 'Mic ON';
+      operatorMicBtn.style.background = 'var(--orange)';
+      operatorMicBtn.style.color = '#000';
+      operatorModeIndicator.textContent = 'YOU ARE LIVE';
+      operatorModeIndicator.style.color = 'var(--orange)';
+
+      // Notify backend
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'operator_speak_start' }));
+      }
+
+      // Start audio pipeline
+      operatorAudioCtx = new AudioContext({ sampleRate: 16000 });
+      const source = operatorAudioCtx.createMediaStreamSource(operatorMicStream);
+      const processor = operatorAudioCtx.createScriptProcessor(512, 1, 1);
+      source.connect(processor);
+      processor.connect(operatorAudioCtx.destination);
+
+      processor.onaudioprocess = (e) => {
+        if (!operatorDgWs || operatorDgWs.readyState !== WebSocket.OPEN) return;
+        const input = e.inputBuffer.getChannelData(0);
+        const int16 = new Int16Array(input.length);
+        for (let i = 0; i < input.length; i++) {
+          const s = Math.max(-1, Math.min(1, input[i]));
+          int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        operatorDgWs.send(int16.buffer);
+      };
+    };
+
+    operatorDgWs.onmessage = (evt) => {
+      try {
+        const data = JSON.parse(evt.data);
+        const transcript = data?.channel?.alternatives?.[0]?.transcript;
+        if (!transcript) return;
+
+        const isFinal = data.is_final;
+
+        // Reset silence timer on any speech
+        clearTimeout(operatorSilenceTimer);
+
+        if (!operatorCardId) {
+          operatorCardId = 'op-' + Math.random().toString(36).substring(2, 10);
+          operatorCardText = '';
+        }
+
+        if (isFinal) {
+          operatorCardText += (operatorCardText ? ' ' : '') + transcript;
+        }
+
+        // Send operator card to backend for relay to overlay
+        if (ws && ws.readyState === 1) {
+          ws.send(JSON.stringify({
+            type: 'operator_card',
+            card_id: operatorCardId,
+            text: operatorCardText + (isFinal ? '' : ' ' + transcript),
+            is_final: false,
+          }));
+        }
+
+        // After silence, finalize the card
+        operatorSilenceTimer = setTimeout(() => {
+          if (ws && ws.readyState === 1 && operatorCardId) {
+            ws.send(JSON.stringify({
+              type: 'operator_card',
+              card_id: operatorCardId,
+              text: operatorCardText,
+              is_final: true,
+            }));
+          }
+          operatorCardId = null;
+          operatorCardText = '';
+
+          // After 2s more silence, send operator_speak_end
+          setTimeout(() => {
+            if (operatorMicActive && !operatorCardId) {
+              operatorModeIndicator.textContent = 'AI DRIVING';
+              operatorModeIndicator.style.color = 'var(--dim)';
+              if (ws && ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'operator_speak_end' }));
+              }
+            }
+          }, 2000);
+        }, OPERATOR_SILENCE_MS);
+
+      } catch (e) { /* ignore parse errors */ }
+    };
+
+    operatorDgWs.onclose = () => {
+      if (operatorMicActive) stopOperatorMic();
+    };
+
+  } catch (err) {
+    console.error('Operator mic error:', err);
+    alert('Failed to start microphone: ' + err.message);
+  }
+}
+
+function stopOperatorMic() {
+  operatorMicActive = false;
+  operatorMicBtn.textContent = 'Mic OFF';
+  operatorMicBtn.style.background = 'var(--surface)';
+  operatorMicBtn.style.color = 'var(--text)';
+  operatorModeIndicator.textContent = 'AI DRIVING';
+  operatorModeIndicator.style.color = 'var(--dim)';
+
+  clearTimeout(operatorSilenceTimer);
+
+  if (operatorDgWs) { try { operatorDgWs.close(); } catch(_) {} operatorDgWs = null; }
+  if (operatorAudioCtx) { try { operatorAudioCtx.close(); } catch(_) {} operatorAudioCtx = null; }
+  if (operatorMicStream) { operatorMicStream.getTracks().forEach(t => t.stop()); operatorMicStream = null; }
+
+  // Notify backend
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'operator_speak_end' }));
+  }
+
+  operatorCardId = null;
+  operatorCardText = '';
+}
+
+// Deepgram API key — needed for operator mic transcription in browser
+// This should be set via an environment variable or config
+const DEEPGRAM_KEY = '';  // TODO: set from backend config endpoint
+
 </script>
 </body>
 </html>
