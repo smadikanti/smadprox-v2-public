@@ -77,6 +77,7 @@ function goToStep(n) {
   interviewScreen.classList.remove('active');
 
   if (n === 2) enumerateDevices();
+  if (n === 3) startTestAudio();
   if (n === 4) runPreflightChecks();
 }
 
@@ -194,17 +195,10 @@ btnStep3Next.addEventListener('click', async () => {
   goToStep(4);
 });
 
-// Start test audio capture when entering step 3
-const origGoToStep = goToStep;
-goToStep = function(n) {
-  if (n === 3) startTestAudio();
-  origGoToStep(n);
-};
-
 async function startTestAudio() {
   sysDetectedAudio = false;
   transcriptDetected = false;
-  testTranscript.textContent = 'Waiting for audio...';
+  testTranscript.textContent = 'Waiting for audio... Play something on your speakers.';
   testTranscript.classList.remove('has-text');
   checkAudio.textContent = '~'; checkAudio.className = 'check-icon wait';
   checkTranscript.textContent = '~'; checkTranscript.className = 'check-icon wait';
@@ -212,49 +206,51 @@ async function startTestAudio() {
   try {
     const sysDeviceId = sysDeviceSelect.value;
     const micDeviceId = micDeviceSelect.value;
-    const serverUrl = await smadprox.storeGet('serverUrl');
 
-    // For testing, we create a temporary session ID
-    const testSessionId = 'test-' + Math.random().toString(36).substring(2, 10);
+    // LOCAL-ONLY test: just capture audio and show levels, no backend needed.
+    // Uses startAudioPipeline directly with a dummy WebSocket-like sink.
 
-    // Import audio capture
-    const { connectAudioStreams } = require('./shared/audio-capture.js');
-    testAudioConnection = await connectAudioStreams({
-      sysDeviceId,
-      micDeviceId,
-      serverUrl,
-      sessionId: testSessionId,
-      onLevel: (tag, level) => {
-        const pct = Math.round(level * 100) + '%';
-        if (tag === 'sys') {
-          sysLevelBar.style.width = pct;
-          if (level > 0.02 && !sysDetectedAudio) {
-            sysDetectedAudio = true;
-            checkAudio.textContent = '\u2713';
-            checkAudio.className = 'check-icon ok';
-          }
-        } else {
-          micLevelBar.style.width = pct;
-        }
-      },
-      onStatus: (msg) => {
-        testTranscript.textContent = msg;
-      },
+    const sysStream = await navigator.mediaDevices.getUserMedia({
+      audio: audioConstraints(sysDeviceId)
+    });
+    const micStream = await navigator.mediaDevices.getUserMedia({
+      audio: audioConstraints(micDeviceId)
     });
 
-    // Listen for transcript events via the system audio WebSocket
-    // The backend will transcribe and we'd need a test endpoint.
-    // For now, audio level detection confirms the pipeline works.
-    // Transcript confirmation will happen when backend is connected.
-    setTimeout(() => {
-      if (sysDetectedAudio) {
-        transcriptDetected = true;
+    // Dummy sink that accepts send() but discards data
+    const dummyWs = { readyState: 1, send: () => {}, OPEN: 1 };
+    // WebSocket.OPEN = 1, match the check in startAudioPipeline
+    Object.defineProperty(dummyWs, 'readyState', { get: () => 1 });
+
+    const sysPipeline = startAudioPipeline(sysStream, dummyWs, 'sys', (tag, level) => {
+      const pct = Math.round(level * 100) + '%';
+      sysLevelBar.style.width = pct;
+      if (level > 0.02 && !sysDetectedAudio) {
+        sysDetectedAudio = true;
+        checkAudio.textContent = '\u2713';
+        checkAudio.className = 'check-icon ok';
+        testTranscript.textContent = 'System audio detected! Your BlackHole setup is working.';
+        testTranscript.classList.add('has-text');
+        // Also mark transcript check as OK since audio capture works
         checkTranscript.textContent = '\u2713';
         checkTranscript.className = 'check-icon ok';
-        testTranscript.textContent = 'Audio pipeline working. System audio detected.';
-        testTranscript.classList.add('has-text');
       }
-    }, 3000);
+    });
+
+    const micPipeline = startAudioPipeline(micStream, dummyWs, 'mic', (tag, level) => {
+      const pct = Math.round(level * 100) + '%';
+      micLevelBar.style.width = pct;
+    });
+
+    // Store cleanup function
+    testAudioConnection = {
+      stop: () => {
+        try { sysPipeline.processor.disconnect(); sysPipeline.ctx.close(); } catch (_) {}
+        try { micPipeline.processor.disconnect(); micPipeline.ctx.close(); } catch (_) {}
+        sysStream.getTracks().forEach(t => t.stop());
+        micStream.getTracks().forEach(t => t.stop());
+      }
+    };
 
   } catch (err) {
     testTranscript.textContent = 'Error: ' + err.message;
@@ -349,9 +345,19 @@ btnStart.addEventListener('click', async () => {
   await smadprox.storeSet('candidateId', candidateId);
   await smadprox.storeSet('serverUrl', serverUrl);
 
-  // Start audio capture
+  // Tell main process to show overlay FIRST (even before audio connects)
+  smadprox.startInterview({
+    candidateId,
+    serverUrl,
+    sysDeviceId,
+    micDeviceId,
+  });
+
+  showInterviewScreen();
+
+  // Start audio capture in background — don't block the UI
   try {
-    const { connectAudioStreams } = require('./shared/audio-capture.js');
+    // connectAudioStreams loaded via <script> tag in setup.html
     liveAudioConnection = await connectAudioStreams({
       sysDeviceId,
       micDeviceId,
@@ -365,20 +371,11 @@ btnStart.addEventListener('click', async () => {
       onStatus: () => {},
     });
   } catch (err) {
-    startError.textContent = 'Failed to connect: ' + err.message;
-    startError.style.display = 'block';
-    return;
+    console.error('Audio connection failed:', err.message);
+    // Show error on interview screen but don't close it
+    const sub = document.querySelector('.interview-sub');
+    if (sub) sub.textContent = 'Audio not connected: ' + err.message + '. Overlay is still running.';
   }
-
-  // Tell main process to show overlay
-  smadprox.startInterview({
-    candidateId,
-    serverUrl,
-    sysDeviceId,
-    micDeviceId,
-  });
-
-  showInterviewScreen();
 });
 
 btnStop.addEventListener('click', () => {

@@ -141,25 +141,22 @@ ipcMain.on('start-interview', (_e, config) => {
   if (setupWindow) setupWindow.hide();
   if (!overlayWindow) createOverlayWindow();
 
-  overlayWindow.once('ready-to-show', () => {
-    overlayWindow.show();
+  // Send config and show overlay — overlay is pre-created so ready-to-show already fired
+  const sendConfig = () => {
     overlayWindow.webContents.send('session-config', {
       candidateId: config.candidateId,
       serverUrl: config.serverUrl,
       sysDeviceId: config.sysDeviceId,
       micDeviceId: config.micDeviceId,
     });
-  });
+    overlayWindow.show();
+  };
 
-  // If overlay already loaded, send config directly
-  if (overlayWindow.isVisible()) {
-    overlayWindow.webContents.send('session-config', {
-      candidateId: config.candidateId,
-      serverUrl: config.serverUrl,
-      sysDeviceId: config.sysDeviceId,
-      micDeviceId: config.micDeviceId,
-    });
-    overlayWindow.show();
+  // Check if page is loaded
+  if (overlayWindow.webContents.isLoading()) {
+    overlayWindow.webContents.once('did-finish-load', sendConfig);
+  } else {
+    sendConfig();
   }
 });
 
