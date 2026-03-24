@@ -1,0 +1,1614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HumanProx — Coach Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0a0a0a;
+      --surface: rgba(255,255,255,0.04);
+      --surface-hover: rgba(255,255,255,0.07);
+      --border: rgba(255,255,255,0.08);
+      --text: #f0f0f0;
+      --text-secondary: #a0a0a0;
+      --dim: #666;
+      --accent: #c96442;
+      --green: #34c759;
+      --green-dim: rgba(52,199,89,0.15);
+      --orange: #ff9f0a;
+      --orange-dim: rgba(255,159,10,0.15);
+      --red: #ff453a;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Layout ── */
+    .app { display: flex; flex-direction: column; height: 100vh; }
+    .toolbar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(10,10,10,0.9);
+      backdrop-filter: blur(20px);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .toolbar-title {
+      font-size: 13px; font-weight: 700; color: var(--accent);
+      letter-spacing: 0.02em;
+    }
+    .toolbar-sep { width: 1px; height: 20px; background: var(--border); }
+
+    /* ── Connection ── */
+    .connect-group { display: flex; align-items: center; gap: 6px; position: relative; }
+    .connect-group input {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text);
+      font-size: 12px; padding: 5px 10px; width: 200px;
+      outline: none; font-family: inherit;
+    }
+    .connect-group input:focus { border-color: var(--accent); }
+    .connect-group input::placeholder { color: #444; }
+
+    /* Session picker dropdown */
+    .session-picker {
+      position: absolute; top: 100%; left: 0; min-width: 320px;
+      background: #1a1a1a; border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 6px 0;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.5); z-index: 100;
+      display: none; max-height: 280px; overflow-y: auto;
+    }
+    .session-picker.open { display: block; }
+    .session-picker-empty {
+      padding: 16px; text-align: center; font-size: 11px; color: var(--dim);
+    }
+    .session-pick-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 14px; cursor: pointer; transition: background 0.1s;
+    }
+    .session-pick-item:hover { background: var(--surface-hover); }
+    .session-pick-item.active { background: rgba(201,100,66,0.12); }
+    .spi-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; box-shadow: 0 0 6px rgba(52,199,89,0.4); }
+    .spi-info { flex: 1; min-width: 0; }
+    .spi-name { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .spi-meta { font-size: 10px; color: var(--dim); margin-top: 1px; }
+    .spi-sid { font-size: 9px; color: #555; font-family: 'SF Mono', monospace; }
+    .btn {
+      background: var(--accent); color: #fff; border: none;
+      border-radius: var(--radius-sm); padding: 5px 14px;
+      font-size: 11px; font-weight: 600; cursor: pointer;
+      white-space: nowrap; transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-outline {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+    .btn-outline:hover { border-color: var(--accent); color: var(--text); }
+    .btn-green { background: var(--green); }
+    .btn-sm { padding: 4px 10px; font-size: 10px; }
+
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--red); flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .status-dot.connected { background: var(--green); box-shadow: 0 0 6px rgba(52,199,89,0.5); }
+
+    /* ── Mode controls ── */
+    .mode-controls {
+      display: flex; align-items: center; gap: 8px;
+      margin-left: auto;
+    }
+    .mode-group {
+      display: flex; align-items: center; gap: 4px;
+      background: var(--surface); border-radius: var(--radius-sm);
+      padding: 2px; border: 1px solid var(--border);
+    }
+    .mode-label {
+      font-size: 9px; font-weight: 600; color: var(--dim);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 0 6px;
+    }
+    .mode-btn {
+      background: transparent; border: none; color: var(--dim);
+      font-size: 10px; font-weight: 600; padding: 4px 10px;
+      border-radius: 6px; cursor: pointer; transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .mode-btn:hover { color: var(--text-secondary); }
+    .mode-btn.active { background: var(--accent); color: #fff; }
+
+    /* ── Main content ── */
+    .main { display: flex; flex: 1; overflow: hidden; }
+    .transcript-panel {
+      width: 360px; min-width: 300px;
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      flex-shrink: 0;
+    }
+    .transcript-split { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+    .transcript-section { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .transcript-section + .transcript-section { border-top: 1px solid var(--border); }
+    .transcript-header {
+      padding: 8px 14px; font-size: 10px; font-weight: 700;
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+    }
+    .transcript-header.int-header { color: var(--orange); }
+    .transcript-header.cand-header { color: var(--green); }
+    .header-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .header-dot.orange { background: var(--orange); }
+    .header-dot.green { background: var(--green); }
+    .transcript-body { flex: 1; overflow-y: auto; padding: 8px 12px; }
+    .transcript-body::-webkit-scrollbar { width: 3px; }
+    .transcript-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+
+    .t-entry {
+      padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.03);
+      animation: fadeIn 0.2s ease-out; border-radius: 4px; margin-bottom: 2px;
+    }
+    .t-entry.candidate-entry {
+      background: rgba(52,199,89,0.05); border-left: 2px solid rgba(52,199,89,0.3);
+    }
+    .t-entry.interviewer-entry {
+      background: rgba(255,159,10,0.04); border-left: 2px solid rgba(255,159,10,0.2);
+    }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+    .t-speaker {
+      font-size: 9px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.04em; margin-bottom: 2px;
+    }
+    .t-speaker.interviewer { color: var(--orange); }
+    .t-speaker.candidate { color: var(--green); }
+    .t-text { font-size: 12px; line-height: 1.55; color: var(--text-secondary); }
+    .t-text.interim { font-style: italic; color: #555; }
+
+    /* ── Coach panel ── */
+    .coach-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .coach-header {
+      padding: 10px 14px; font-size: 11px; font-weight: 600;
+      color: var(--dim); border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 8px;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .coach-feed { flex: 1; overflow-y: auto; padding: 12px 16px; }
+    .coach-feed::-webkit-scrollbar { width: 3px; }
+    .coach-feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+
+    .coach-empty {
+      display: flex; align-items: center; justify-content: center;
+      height: 100%; font-size: 13px; color: #333;
+    }
+
+    .coach-entry {
+      padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+      animation: fadeIn 0.3s ease-out;
+    }
+    .coach-entry-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .coach-entry-num {
+      font-size: 10px; font-weight: 700; color: var(--dim);
+      font-variant-numeric: tabular-nums;
+    }
+    .coach-entry-actions { display: flex; gap: 4px; }
+    .coach-entry-question {
+      font-size: 11px; color: var(--orange); font-weight: 500;
+      margin-bottom: 6px; line-height: 1.4;
+      padding: 6px 10px; background: var(--orange-dim);
+      border-radius: var(--radius-sm);
+    }
+    .coach-entry-answer {
+      font-size: 15px; line-height: 1.65; color: var(--text);
+      letter-spacing: -0.1px;
+    }
+    .coach-blink {
+      display: inline-block; width: 2px; height: 0.85em;
+      background: var(--accent); margin-left: 2px;
+      animation: blink 0.7s infinite; vertical-align: text-bottom;
+      border-radius: 1px;
+    }
+    @keyframes blink { 0%,50%{opacity:1} 51%,100%{opacity:0} }
+
+    .coach-flash {
+      padding: 8px 12px; font-size: 12px; color: var(--accent);
+      font-style: italic; opacity: 0.8;
+      border-left: 2px solid var(--accent); margin: 4px 0;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    /* ── Pending generation banner ── */
+    .gen-pending {
+      display: none; align-items: center; gap: 8px;
+      padding: 8px 14px; background: rgba(255,159,10,0.08);
+      border-top: 1px solid rgba(255,159,10,0.15);
+      flex-shrink: 0;
+    }
+    .gen-pending.visible { display: flex; }
+    .gen-pending-text {
+      flex: 1; font-size: 11px; color: var(--orange);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    /* ── Bottom bar ── */
+    .bottombar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px; border-top: 1px solid var(--border);
+      background: rgba(10,10,10,0.9); flex-shrink: 0;
+    }
+    .volume-group { display: flex; align-items: center; gap: 6px; }
+    .volume-group label { font-size: 9px; color: var(--dim); font-weight: 600; text-transform: uppercase; }
+    .volume-slider {
+      -webkit-appearance: none; appearance: none; width: 80px; height: 3px;
+      background: rgba(255,255,255,0.1); border-radius: 2px; outline: none; cursor: pointer;
+    }
+    .volume-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 10px; height: 10px;
+      background: var(--accent); border-radius: 50%; cursor: pointer;
+    }
+    .tts-indicator {
+      font-size: 10px; color: var(--dim); display: none;
+      align-items: center; gap: 4px;
+    }
+    .tts-indicator.active { display: flex; color: var(--green); }
+    .tts-pulse {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--green);
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+    .spacer { flex: 1; }
+    .counter { font-size: 10px; color: var(--dim); }
+
+    /* ── Latency report ── */
+    .latency-bar {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 9px; font-family: 'SF Mono', monospace;
+      color: var(--dim); white-space: nowrap;
+    }
+    .latency-bar .lb-label { font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+    .latency-bar .lb-val { color: var(--text-secondary); }
+    .latency-bar .lb-provider { padding: 1px 6px; border-radius: 3px; font-weight: 700; font-size: 8px; text-transform: uppercase; }
+    .latency-bar .lb-groq { background: rgba(52,199,89,0.15); color: var(--green); }
+    .latency-bar .lb-claude { background: rgba(201,100,66,0.15); color: var(--accent); }
+
+    /* ── Context drawer ── */
+    .drawer-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5); z-index: 100;
+    }
+    .drawer-overlay.open { display: block; }
+    .drawer {
+      position: fixed; right: 0; top: 0; bottom: 0;
+      width: 340px; max-width: 100%; background: var(--bg);
+      border-left: 1px solid var(--border); z-index: 101;
+      transform: translateX(100%);
+      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+      overflow-y: auto; padding: 20px 16px;
+    }
+    .drawer-overlay.open .drawer { transform: translateX(0); }
+    .drawer h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+    .drawer label {
+      font-size: 10px; font-weight: 500; color: var(--dim);
+      display: block; margin-bottom: 4px; margin-top: 10px;
+    }
+    .drawer textarea {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text);
+      font-family: inherit; font-size: 11px; padding: 8px 10px;
+      resize: vertical; min-height: 60px; outline: none; line-height: 1.5;
+    }
+    .drawer textarea:focus { border-color: var(--accent); }
+    .drawer textarea::placeholder { color: #444; }
+    .drawer-close {
+      position: absolute; top: 16px; right: 16px;
+      background: none; border: none; color: var(--dim);
+      cursor: pointer; font-size: 18px; line-height: 1;
+    }
+    .drawer-close:hover { color: var(--text); }
+
+    /* ── Card Relay panel ── */
+    .card-relay-panel {
+      border-top: 1px solid var(--border); flex-shrink: 0;
+      max-height: 200px; display: flex; flex-direction: column;
+    }
+    .card-relay-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 12px; background: rgba(59,130,246,0.06);
+      font-size: 11px; font-weight: 600; flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-relay-feed {
+      display: flex; gap: 6px; padding: 8px 12px;
+      overflow-x: auto; overflow-y: hidden; flex: 1;
+    }
+    .card-relay-feed::-webkit-scrollbar { height: 3px; }
+    .card-relay-feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+    .relay-card {
+      min-width: 180px; max-width: 260px; flex-shrink: 0;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 8px 10px;
+      font-size: 11px; line-height: 1.5; color: var(--text);
+      cursor: pointer; transition: border-color 0.15s, background 0.15s;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .relay-card:hover { border-color: var(--accent); background: var(--surface-hover); }
+    .relay-card.sent { border-color: var(--green); opacity: 0.6; }
+    .relay-card.whiteboard { border-left: 3px solid #eab308; }
+    .relay-card-idx { font-size: 9px; font-weight: 600; color: var(--dim); text-transform: uppercase; }
+    .relay-card-text { font-size: 11px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+    /* ── Simulation panel ── */
+    .sim-panel {
+      display: none; border-top: 1px solid var(--border);
+      background: rgba(201,100,66,0.04); flex-shrink: 0;
+    }
+    .sim-panel.open { display: block; }
+    .sim-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 14px; cursor: pointer;
+    }
+    .sim-header span { font-size: 10px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+    .sim-body { padding: 0 14px 10px; }
+    .sim-input-row { display: flex; gap: 6px; margin-bottom: 8px; }
+    .sim-input {
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text); font-size: 12px;
+      padding: 6px 10px; outline: none; font-family: inherit;
+    }
+    .sim-input:focus { border-color: var(--accent); }
+    .sim-input::placeholder { color: #444; }
+    .sim-presets { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+    .sim-preset {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; color: var(--text-secondary); font-size: 10px;
+      padding: 3px 10px; cursor: pointer; transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .sim-preset:hover { border-color: var(--accent); color: var(--text); }
+    .sim-auto-row {
+      display: flex; align-items: center; gap: 8px; padding-top: 6px;
+      border-top: 1px solid rgba(255,255,255,0.04);
+    }
+    .sim-auto-row label { font-size: 10px; color: var(--dim); }
+    .sim-timer {
+      font-size: 10px; color: var(--accent); font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Strategy Gap Questionnaire ── */
+    .gap-panel {
+      display: none; position: fixed; bottom: 50px; right: 20px;
+      width: 380px; max-height: 70vh; overflow-y: auto;
+      background: #1a1a1a; border: 1px solid var(--accent);
+      border-radius: var(--radius); padding: 16px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.6); z-index: 200;
+      animation: slideUp 0.25s ease-out;
+    }
+    @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+    .gap-panel.open { display: block; }
+    .gap-title {
+      font-size: 12px; font-weight: 700; color: var(--accent);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      margin-bottom: 4px;
+    }
+    .gap-subtitle {
+      font-size: 10px; color: var(--dim); margin-bottom: 14px; line-height: 1.4;
+    }
+    .gap-item { margin-bottom: 14px; }
+    .gap-question {
+      font-size: 12px; font-weight: 600; color: var(--text);
+      margin-bottom: 6px; line-height: 1.4;
+    }
+    .gap-options { display: flex; flex-wrap: wrap; gap: 4px; }
+    .gap-option {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; color: var(--text-secondary); font-size: 11px;
+      padding: 4px 12px; cursor: pointer; transition: all 0.15s;
+    }
+    .gap-option:hover { border-color: var(--accent); color: var(--text); }
+    .gap-option.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .gap-freetext {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text); font-size: 11px;
+      padding: 6px 10px; outline: none; font-family: inherit;
+    }
+    .gap-freetext:focus { border-color: var(--accent); }
+    .gap-actions { display: flex; gap: 8px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <span class="toolbar-title">HumanProx</span>
+    <div class="toolbar-sep"></div>
+    <div class="connect-group">
+      <div class="status-dot" id="status-dot"></div>
+      <input id="session-input" placeholder="Session ID or pick below" value="" onfocus="openPicker()" autocomplete="off">
+      <button class="btn btn-outline btn-sm" onclick="refreshSessions()" title="Refresh sessions">&#x21bb;</button>
+      <button class="btn" id="connect-btn">Connect</button>
+      <div class="session-picker" id="session-picker"></div>
+    </div>
+    <div class="toolbar-sep"></div>
+
+    <!-- Mode controls -->
+    <div class="mode-controls">
+      <span class="mode-label">Generation</span>
+      <div class="mode-group">
+        <button class="mode-btn active" id="gen-auto-btn" onclick="setGenMode(true)">Auto</button>
+        <button class="mode-btn" id="gen-manual-btn" onclick="setGenMode(false)">Manual</button>
+      </div>
+      <span class="mode-label">Speech</span>
+      <div class="mode-group">
+        <button class="mode-btn active" id="tts-auto-btn" onclick="setTTSMode(true)">Auto</button>
+        <button class="mode-btn" id="tts-supervision-btn" onclick="setTTSMode(false)">Supervision</button>
+      </div>
+      <button class="btn btn-outline btn-sm" id="context-btn" onclick="openDrawer()">Context</button>
+      <button class="btn btn-outline btn-sm" onclick="toggleSim()" style="border-color:var(--accent);color:var(--accent)">Simulate</button>
+      <button class="btn btn-sm" onclick="openInvitePanel()" style="background:var(--green);color:#000;font-weight:700">+ Invite</button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- Transcript panel (left) — split into interviewer/candidate -->
+    <div class="transcript-panel">
+      <div class="transcript-split">
+        <div class="transcript-section">
+          <div class="transcript-header int-header"><span class="header-dot orange"></span>Interviewer</div>
+          <div class="transcript-body" id="int-transcript-body"></div>
+        </div>
+        <div class="transcript-section">
+          <div class="transcript-header cand-header"><span class="header-dot green"></span>Candidate (Mic)</div>
+          <div class="transcript-body" id="cand-transcript-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Coach panel (right) -->
+    <div class="coach-panel">
+      <div class="coach-header">
+        <span>AI Coaching</span>
+        <span class="counter" id="counter"></span>
+      </div>
+      <div class="coach-feed" id="coach-feed">
+        <div class="coach-empty" id="coach-empty">Waiting for interviewer...</div>
+      </div>
+      <div class="gen-pending" id="gen-pending">
+        <span class="gen-pending-text" id="gen-pending-text"></span>
+        <button class="btn btn-green btn-sm" onclick="triggerGenerate()">Generate</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Card Relay Panel (overlay control) -->
+  <div class="card-relay-panel" id="card-relay-panel" style="display:none;">
+    <div class="card-relay-header">
+      <span>Card Relay</span>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <label style="font-size:10px;color:var(--dim);display:flex;align-items:center;gap:4px;">
+          <input type="checkbox" id="auto-relay-toggle" onchange="toggleAutoRelay()"> Auto
+        </label>
+        <button class="btn btn-sm btn-green" onclick="relayAllCards()">Send All</button>
+        <span class="counter" id="overlay-count">0 overlays</span>
+      </div>
+    </div>
+    <div class="card-relay-feed" id="card-relay-feed"></div>
+  </div>
+
+  <!-- Simulation panel -->
+  <div class="sim-panel" id="sim-panel">
+    <div class="sim-header" onclick="toggleSim()">
+      <span>Simulation Mode</span>
+      <span class="sim-timer" id="sim-timer"></span>
+    </div>
+    <div class="sim-body">
+      <div class="sim-input-row">
+        <input class="sim-input" id="sim-question" placeholder="Type a custom interviewer question...">
+        <button class="btn btn-sm" onclick="simSendQuestion()">Send</button>
+      </div>
+      <div class="sim-presets" id="sim-presets"></div>
+      <div class="sim-auto-row">
+        <button class="btn btn-sm" id="sim-auto-btn" onclick="toggleSimAuto()">Start Auto-Run</button>
+        <label>Sends next question every 5s after answer completes</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom bar -->
+  <div class="bottombar">
+    <div class="volume-group">
+      <label>Vol</label>
+      <input type="range" class="volume-slider" id="volume-slider" min="0" max="100" value="80">
+    </div>
+    <div class="tts-indicator" id="tts-indicator">
+      <div class="tts-pulse"></div>
+      <span>Speaking...</span>
+    </div>
+    <div class="latency-bar" id="latency-bar" style="display:none"></div>
+    <div class="spacer"></div>
+    <span id="status-text" style="font-size:10px;color:var(--dim)"></span>
+  </div>
+
+</div>
+
+<!-- Strategy Gap Questionnaire -->
+<div class="gap-panel" id="gap-panel">
+  <div class="gap-title">Refine Strategy</div>
+  <div class="gap-subtitle">Answer these to improve coaching accuracy. Optional — skip any you're unsure about.</div>
+  <div id="gap-items"></div>
+  <div class="gap-actions">
+    <button class="btn" onclick="submitGapAnswers()" style="flex:1">Submit &amp; Refine</button>
+    <button class="btn btn-outline btn-sm" onclick="dismissGaps()">Skip</button>
+  </div>
+</div>
+
+<!-- Invite panel -->
+<div class="drawer-overlay" id="invite-overlay" onclick="if(event.target===this)closeInvitePanel()">
+  <div class="drawer" style="max-width:400px">
+    <button class="drawer-close" onclick="closeInvitePanel()">&times;</button>
+    <h3>Invite Codes</h3>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <input type="text" id="invite-name-input" placeholder="Candidate name" style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
+      <button class="btn btn-sm" onclick="createInvite()" style="white-space:nowrap">Create</button>
+    </div>
+    <div id="invite-created" style="display:none;padding:14px;background:rgba(52,199,89,0.08);border:1px solid rgba(52,199,89,0.2);border-radius:8px;margin-bottom:16px;text-align:center">
+      <div style="font-size:10px;color:var(--dim);margin-bottom:6px;text-transform:uppercase;font-weight:600">Share this code with the candidate</div>
+      <div id="invite-code-display" style="font-size:28px;font-weight:800;letter-spacing:0.15em;color:var(--green);font-family:'SF Mono',monospace;margin-bottom:8px"></div>
+      <button class="btn btn-sm btn-outline" onclick="copyInviteCode()" id="copy-invite-btn" style="font-size:11px">Copy Code</button>
+    </div>
+    <div id="invite-list" style="font-size:12px;color:var(--dim)">Loading...</div>
+  </div>
+</div>
+
+<!-- Context drawer -->
+<div class="drawer-overlay" id="drawer-overlay">
+  <div class="drawer">
+    <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+    <h3>Session Context</h3>
+    <label>Strategy Brief <span style="font-weight:400;text-transform:none;letter-spacing:0">(paste a pre-compiled brief to skip auto-compilation)</span></label>
+    <textarea id="ctx-strategy-brief" placeholder="Paste your full strategy brief here. If provided, this is used directly instead of compiling from the fields below..." style="min-height:100px;font-size:12px"></textarea>
+    <div style="border-top:1px solid var(--border);margin:12px 0 8px;opacity:0.3"></div>
+    <label style="font-size:9px;color:var(--dim);margin-bottom:10px">Or fill in individual fields below to auto-compile:</label>
+    <label>Round Type</label>
+    <select id="ctx-round-type" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);margin-bottom:8px;font-size:13px">
+      <option value="general">General</option>
+      <option value="system_design">System Design</option>
+      <option value="behavioral">Behavioral</option>
+      <option value="technical_coding">Technical / Coding</option>
+      <option value="recruiter_screen">Recruiter Screen</option>
+    </select>
+    <label>Resume</label>
+    <textarea id="ctx-resume" placeholder="Paste candidate resume..."></textarea>
+    <label>Job Description</label>
+    <textarea id="ctx-jd" placeholder="Paste job description..."></textarea>
+    <label>Interviewer LinkedIn</label>
+    <textarea id="ctx-interviewer" placeholder="Paste interviewer LinkedIn summary, role, background..."></textarea>
+    <label>Company Values</label>
+    <textarea id="ctx-values" placeholder="Culture, values..."></textarea>
+    <label>Recruiter Prep Notes</label>
+    <textarea id="ctx-recruiter" placeholder="Notes from recruiter: what to expect, topics, preferences..."></textarea>
+    <label>Custom Instructions</label>
+    <textarea id="ctx-meta" placeholder="Custom coaching prompt..."></textarea>
+    <div id="strategy-status" style="margin-top:8px;font-size:11px;color:var(--dim);min-height:16px"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn" style="flex:1" onclick="saveContext()">Save &amp; Compile Strategy</button>
+      <button class="btn" style="flex:0 0 auto;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:12px 16px" onclick="copyAllContext()" id="copy-ctx-btn">Copy All</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SESSION_ID_PARAM = new URLSearchParams(location.search).get('s') || '';
+const sessionInput = document.getElementById('session-input');
+const connectBtn = document.getElementById('connect-btn');
+const statusDot = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+const intTranscriptBody = document.getElementById('int-transcript-body');
+const candTranscriptBody = document.getElementById('cand-transcript-body');
+const coachFeed = document.getElementById('coach-feed');
+const coachEmpty = document.getElementById('coach-empty');
+const counterEl = document.getElementById('counter');
+const genPending = document.getElementById('gen-pending');
+const genPendingText = document.getElementById('gen-pending-text');
+const ttsIndicator = document.getElementById('tts-indicator');
+const volumeSlider = document.getElementById('volume-slider');
+
+if (SESSION_ID_PARAM) sessionInput.value = SESSION_ID_PARAM;
+
+// ── Session Picker ──
+const pickerEl = document.getElementById('session-picker');
+let pickerRefreshTimer = null;
+
+async function refreshSessions() {
+  try {
+    const proto = location.protocol;
+    const host = location.host;
+    const r = await fetch(`${proto}//${host}/api/hp/sessions`);
+    const data = await r.json();
+    renderPicker(data.sessions || []);
+  } catch (e) {
+    pickerEl.innerHTML = '<div class="session-picker-empty">Failed to load sessions</div>';
+  }
+}
+
+function renderPicker(sessions) {
+  if (!sessions.length) {
+    pickerEl.innerHTML = '<div class="session-picker-empty">No active sessions.<br>Waiting for candidates to connect...</div>';
+    return;
+  }
+  pickerEl.innerHTML = sessions.map(s => {
+    const mins = Math.floor(s.elapsed_seconds / 60);
+    const secs = s.elapsed_seconds % 60;
+    const time = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+    const streams = [s.has_interviewer ? 'sys' : '', s.has_candidate ? 'mic' : ''].filter(Boolean).join('+') || 'waiting';
+    return `<div class="session-pick-item" onclick="pickSession('${s.session_id}')">
+      <div class="spi-dot"></div>
+      <div class="spi-info">
+        <div class="spi-name">${s.candidate_name}</div>
+        <div class="spi-meta">${time} &middot; ${streams}</div>
+        <div class="spi-sid">${s.session_id}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openPicker() {
+  refreshSessions();
+  pickerEl.classList.add('open');
+  if (pickerRefreshTimer) clearInterval(pickerRefreshTimer);
+  pickerRefreshTimer = setInterval(refreshSessions, 4000);
+}
+
+function closePicker() {
+  pickerEl.classList.remove('open');
+  if (pickerRefreshTimer) { clearInterval(pickerRefreshTimer); pickerRefreshTimer = null; }
+}
+
+function pickSession(sid) {
+  sessionInput.value = sid;
+  closePicker();
+  doConnect();
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.connect-group')) closePicker();
+});
+
+// Restore context from localStorage
+document.getElementById('ctx-strategy-brief').value = localStorage.getItem('hp-strategy-brief') || '';
+document.getElementById('ctx-resume').value = localStorage.getItem('hp-resume') || '';
+document.getElementById('ctx-jd').value = localStorage.getItem('hp-jd') || '';
+document.getElementById('ctx-interviewer').value = localStorage.getItem('hp-interviewer') || '';
+document.getElementById('ctx-values').value = localStorage.getItem('hp-values') || '';
+document.getElementById('ctx-recruiter').value = localStorage.getItem('hp-recruiter') || '';
+document.getElementById('ctx-meta').value = localStorage.getItem('hp-meta') || '';
+document.getElementById('ctx-round-type').value = localStorage.getItem('hp-round-type') || 'general';
+
+let ws = null;
+let connected = false;
+let entries = [];
+let activeIdx = -1;
+let genAuto = true;
+let ttsAuto = true;
+let pendingQuestion = '';
+
+// ── Audio playback (raw PCM 24kHz 16-bit LE streaming) ──
+let audioCtx = null;
+let pcmQueue = [];      // queued Int16 samples
+let isPlaying = false;
+let ttsVolume = 0.8;
+let ttsSampleRate = 24000;
+let scheduledEnd = 0;   // AudioContext time when last scheduled buffer ends
+
+volumeSlider.addEventListener('input', () => {
+  ttsVolume = parseInt(volumeSlider.value) / 100;
+});
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new AudioContext({ sampleRate: ttsSampleRate });
+  return audioCtx;
+}
+
+function onTTSStart(msg) {
+  ttsSampleRate = msg.sample_rate || 24000;
+  if (audioCtx && audioCtx.sampleRate !== ttsSampleRate) {
+    audioCtx.close();
+    audioCtx = null;
+  }
+  pcmQueue = [];
+  scheduledEnd = 0;
+  isPlaying = false;
+}
+
+function playAudioChunk(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const int16 = new Int16Array(bytes.buffer);
+  pcmQueue.push(int16);
+  if (!isPlaying) drainPCMQueue();
+}
+
+function drainPCMQueue() {
+  if (pcmQueue.length === 0) { isPlaying = false; return; }
+  isPlaying = true;
+  ttsIndicator.classList.add('active');
+  const ctx = getAudioCtx();
+
+  // Batch all queued PCM into one buffer for gapless playback
+  let totalSamples = 0;
+  for (const chunk of pcmQueue) totalSamples += chunk.length;
+  const merged = new Float32Array(totalSamples);
+  let offset = 0;
+  while (pcmQueue.length) {
+    const chunk = pcmQueue.shift();
+    for (let i = 0; i < chunk.length; i++) {
+      merged[offset++] = chunk[i] < 0 ? chunk[i] / 0x8000 : chunk[i] / 0x7FFF;
+    }
+  }
+
+  const audioBuf = ctx.createBuffer(1, merged.length, ttsSampleRate);
+  audioBuf.getChannelData(0).set(merged);
+  const source = ctx.createBufferSource();
+  const gain = ctx.createGain();
+  gain.gain.value = ttsVolume;
+  source.buffer = audioBuf;
+  source.connect(gain);
+  gain.connect(ctx.destination);
+
+  // Schedule gapless: start right after the previous buffer ends
+  const now = ctx.currentTime;
+  const startAt = Math.max(now, scheduledEnd);
+  source.start(startAt);
+  scheduledEnd = startAt + audioBuf.duration;
+
+  source.onended = () => {
+    if (pcmQueue.length > 0) {
+      drainPCMQueue();
+    } else {
+      isPlaying = false;
+      ttsIndicator.classList.remove('active');
+    }
+  };
+
+  // Also check for new chunks arriving during playback
+  setTimeout(() => { if (pcmQueue.length > 0 && isPlaying) drainPCMQueue(); }, 200);
+}
+
+function stopAudio() {
+  pcmQueue = [];
+  scheduledEnd = 0;
+  isPlaying = false;
+  ttsIndicator.classList.remove('active');
+}
+
+// ── Mode controls ──
+function setGenMode(auto) {
+  genAuto = auto;
+  document.getElementById('gen-auto-btn').classList.toggle('active', auto);
+  document.getElementById('gen-manual-btn').classList.toggle('active', !auto);
+  sendModeUpdate();
+}
+
+function setTTSMode(auto) {
+  ttsAuto = auto;
+  document.getElementById('tts-auto-btn').classList.toggle('active', auto);
+  document.getElementById('tts-supervision-btn').classList.toggle('active', !auto);
+  sendModeUpdate();
+}
+
+function sendModeUpdate() {
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(JSON.stringify({
+    type: 'set_mode',
+    mode: 'humanprox',
+    tts_enabled: true,
+    tts_auto: ttsAuto,
+    gen_auto: genAuto,
+  }));
+}
+
+function triggerGenerate() {
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(JSON.stringify({ type: 'generate_now', question: pendingQuestion }));
+  genPending.classList.remove('visible');
+  pendingQuestion = '';
+}
+
+function playTTS(text) {
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(JSON.stringify({ type: 'play_tts', text }));
+}
+
+// ── Context drawer ──
+function openDrawer() { document.getElementById('drawer-overlay').classList.add('open'); }
+function closeDrawer() { document.getElementById('drawer-overlay').classList.remove('open'); }
+document.getElementById('drawer-overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'drawer-overlay') closeDrawer();
+});
+
+// ── Invite management ──
+let lastCreatedCode = '';
+
+function openInvitePanel() {
+  document.getElementById('invite-overlay').classList.add('open');
+  loadInvites();
+}
+
+function closeInvitePanel() {
+  document.getElementById('invite-overlay').classList.remove('open');
+}
+
+async function createInvite() {
+  const nameInput = document.getElementById('invite-name-input');
+  const name = nameInput.value.trim();
+  if (!name) { nameInput.focus(); return; }
+  try {
+    const r = await fetch('/api/hp/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await r.json();
+    lastCreatedCode = data.code;
+    document.getElementById('invite-code-display').textContent = data.code;
+    document.getElementById('invite-created').style.display = 'block';
+    nameInput.value = '';
+    loadInvites();
+  } catch (e) {
+    console.error('Failed to create invite', e);
+  }
+}
+
+function copyInviteCode() {
+  navigator.clipboard.writeText(lastCreatedCode).then(() => {
+    const btn = document.getElementById('copy-invite-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy Code'; }, 1500);
+  });
+}
+
+async function loadInvites() {
+  try {
+    const r = await fetch('/api/hp/invites');
+    const data = await r.json();
+    const list = document.getElementById('invite-list');
+    const invites = data.invites || [];
+    if (!invites.length) {
+      list.innerHTML = '<div style="color:var(--dim);padding:8px 0">No invites yet. Create one above.</div>';
+      return;
+    }
+    list.innerHTML = invites.map(inv => {
+      const age = Math.floor((Date.now() / 1000 - inv.created_at) / 60);
+      const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
+      const status = inv.used
+        ? `<span style="color:var(--dim)">used</span>`
+        : `<span style="color:var(--green)">active</span>`;
+      const code = `<span style="font-family:'SF Mono',monospace;font-weight:700;letter-spacing:0.08em">${inv.code}</span>`;
+      const del = inv.used ? '' : `<button onclick="deleteInvite('${inv.code}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:11px;padding:2px 6px">×</button>`;
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+        <div>${code} <span style="margin-left:8px">${inv.candidate_name}</span></div>
+        <div style="display:flex;align-items:center;gap:8px">${status} <span style="color:#555">${ageStr}</span>${del}</div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    console.error('Failed to load invites', e);
+  }
+}
+
+async function deleteInvite(code) {
+  try {
+    await fetch(`/api/hp/invite/${code}`, { method: 'DELETE' });
+    loadInvites();
+  } catch (e) {
+    console.error('Failed to delete invite', e);
+  }
+}
+
+function copyAllContext() {
+  const fields = [
+    ['Resume', document.getElementById('ctx-resume').value.trim()],
+    ['Job Description', document.getElementById('ctx-jd').value.trim()],
+    ['Interviewer', document.getElementById('ctx-interviewer').value.trim()],
+    ['Company / Values', document.getElementById('ctx-values').value.trim()],
+    ['Recruiter Notes', document.getElementById('ctx-recruiter').value.trim()],
+    ['Custom Instructions', document.getElementById('ctx-meta').value.trim()],
+    ['Strategy Brief', document.getElementById('ctx-strategy-brief').value.trim()],
+    ['Round Type', document.getElementById('ctx-round-type').value],
+  ];
+  const text = fields
+    .filter(([, v]) => v)
+    .map(([label, v]) => `## ${label}\n${v}`)
+    .join('\n\n');
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copy-ctx-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy All'; }, 1500);
+  });
+}
+
+function saveContext() {
+  if (!ws || ws.readyState !== 1) return;
+  const sb = document.getElementById('ctx-strategy-brief').value.trim();
+  const r = document.getElementById('ctx-resume').value.trim();
+  const j = document.getElementById('ctx-jd').value.trim();
+  const int = document.getElementById('ctx-interviewer').value.trim();
+  const v = document.getElementById('ctx-values').value.trim();
+  const rec = document.getElementById('ctx-recruiter').value.trim();
+  const m = document.getElementById('ctx-meta').value.trim();
+  const rt = document.getElementById('ctx-round-type').value;
+  localStorage.setItem('hp-strategy-brief', document.getElementById('ctx-strategy-brief').value);
+  localStorage.setItem('hp-resume', document.getElementById('ctx-resume').value);
+  localStorage.setItem('hp-jd', document.getElementById('ctx-jd').value);
+  localStorage.setItem('hp-interviewer', document.getElementById('ctx-interviewer').value);
+  localStorage.setItem('hp-values', document.getElementById('ctx-values').value);
+  localStorage.setItem('hp-recruiter', document.getElementById('ctx-recruiter').value);
+  localStorage.setItem('hp-meta', document.getElementById('ctx-meta').value);
+  localStorage.setItem('hp-round-type', rt);
+  const docs = [];
+  if (r) docs.push({ title: 'Resume', content: r, doc_type: 'resume' });
+  if (j) docs.push({ title: 'Job Description', content: j, doc_type: 'jd' });
+  if (int) docs.push({ title: 'Interviewer Profile', content: int, doc_type: 'interviewer_profile' });
+  if (v) docs.push({ title: 'Company Values', content: v, doc_type: 'company_values' });
+  if (rec) docs.push({ title: 'Recruiter Prep', content: rec, doc_type: 'recruiter_prep' });
+  const statusEl = document.getElementById('strategy-status');
+  if (sb) {
+    statusEl.textContent = 'Using pre-compiled strategy brief...';
+    statusEl.style.color = '#4ade80';
+  } else {
+    statusEl.textContent = 'Compiling strategy...';
+    statusEl.style.color = 'var(--accent)';
+  }
+  ws.send(JSON.stringify({ type: 'set_context', docs, metaprompt: m, round_type: rt, strategy_brief: sb }));
+}
+
+function autoSendContext() {
+  const sb = document.getElementById('ctx-strategy-brief').value.trim();
+  const r = document.getElementById('ctx-resume').value.trim();
+  const j = document.getElementById('ctx-jd').value.trim();
+  const int = document.getElementById('ctx-interviewer').value.trim();
+  const v = document.getElementById('ctx-values').value.trim();
+  const rec = document.getElementById('ctx-recruiter').value.trim();
+  const m = document.getElementById('ctx-meta').value.trim();
+  const rt = document.getElementById('ctx-round-type').value;
+  if (!r && !j && !v && !m && !int && !rec && !sb) return;
+  const docs = [];
+  if (r) docs.push({ title: 'Resume', content: r, doc_type: 'resume' });
+  if (j) docs.push({ title: 'Job Description', content: j, doc_type: 'jd' });
+  if (int) docs.push({ title: 'Interviewer Profile', content: int, doc_type: 'interviewer_profile' });
+  if (v) docs.push({ title: 'Company Values', content: v, doc_type: 'company_values' });
+  if (rec) docs.push({ title: 'Recruiter Prep', content: rec, doc_type: 'recruiter_prep' });
+  ws.send(JSON.stringify({ type: 'set_context', docs, metaprompt: m, round_type: rt, strategy_brief: sb }));
+}
+
+// ── Transcript rendering ──
+let intInterim = null, candInterim = null;
+
+function addTranscript(speaker, text, isFinal) {
+  const isInt = speaker === 'interviewer';
+  const panel = isInt ? intTranscriptBody : candTranscriptBody;
+  if (isFinal) {
+    if (isInt && intInterim) { intInterim.remove(); intInterim = null; }
+    if (!isInt && candInterim) { candInterim.remove(); candInterim = null; }
+    const el = document.createElement('div');
+    el.className = 't-entry';
+    el.innerHTML = `<div class="t-text">${esc(text)}</div>`;
+    panel.appendChild(el);
+    panel.scrollTop = panel.scrollHeight;
+  } else {
+    let interim = isInt ? intInterim : candInterim;
+    if (!interim) {
+      interim = document.createElement('div');
+      interim.className = 't-entry';
+      interim.innerHTML = `<div class="t-text interim"></div>`;
+      panel.appendChild(interim);
+      if (isInt) intInterim = interim; else candInterim = interim;
+    }
+    interim.querySelector('.t-text').textContent = text;
+    panel.scrollTop = panel.scrollHeight;
+  }
+}
+
+// ── Coach entry management ──
+function createCoachEntry(question, isContinuation) {
+  if (isContinuation && entries.length > 0) {
+    return rerenderEntry(entries.length - 1);
+  }
+  coachEmpty.style.display = 'none';
+  const idx = entries.length;
+  const el = document.createElement('div');
+  el.className = 'coach-entry';
+
+  let actionsHtml = `<button class="btn btn-outline btn-sm" onclick="copyEntry(${idx})" title="Copy">Copy</button>`;
+
+  el.innerHTML = `
+    <div class="coach-entry-header">
+      <span class="coach-entry-num">#${idx + 1}</span>
+      <div class="coach-entry-actions" id="actions-${idx}">${actionsHtml}</div>
+    </div>
+    ${question ? `<div class="coach-entry-question">${esc(question)}</div>` : ''}
+    <div class="coach-entry-answer"><span class="coach-blink"></span></div>
+  `;
+  coachFeed.appendChild(el);
+
+  const entry = {
+    el, idx,
+    answerEl: el.querySelector('.coach-entry-answer'),
+    actionsEl: el.querySelector(`#actions-${idx}`),
+    answer: '',
+    status: 'generating',
+    question: question || '',
+  };
+  entries.push(entry);
+  activeIdx = idx;
+  updateCounter();
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  return entry;
+}
+
+function rerenderEntry(idx) {
+  if (idx < 0 || idx >= entries.length) return createCoachEntry('', false);
+  const entry = entries[idx];
+  entry.answer = '';
+  entry.status = 'generating';
+  entry.answerEl.innerHTML = '<span class="coach-blink"></span>';
+  activeIdx = idx;
+  entry.el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  return entry;
+}
+
+function appendToEntry(idx, text) {
+  if (idx < 0 || idx >= entries.length) return;
+  const entry = entries[idx];
+  entry.answer += text;
+  entry.answerEl.innerHTML = esc(entry.answer) + '<span class="coach-blink"></span>';
+}
+
+function finalizeEntry(idx, fullText) {
+  if (idx < 0 || idx >= entries.length) return;
+  const entry = entries[idx];
+  entry.answer = fullText || entry.answer;
+  entry.status = 'done';
+  entry.answerEl.innerHTML = esc(entry.answer);
+  activeIdx = -1;
+
+  // In supervision mode, show Play button
+  if (!ttsAuto) {
+    const playBtn = document.createElement('button');
+    playBtn.className = 'btn btn-green btn-sm';
+    playBtn.textContent = 'Play';
+    playBtn.onclick = () => playTTS(entry.answer);
+    entry.actionsEl.appendChild(playBtn);
+  }
+}
+
+function cancelEntry(idx) {
+  if (idx < 0 || idx >= entries.length) return;
+  const entry = entries[idx];
+  if (entry.status === 'generating') {
+    entry.status = 'cancelled';
+    const blink = entry.answerEl.querySelector('.coach-blink');
+    if (blink) blink.remove();
+  }
+  activeIdx = -1;
+}
+
+function copyEntry(idx) {
+  if (idx < 0 || idx >= entries.length) return;
+  navigator.clipboard.writeText(entries[idx].answer);
+}
+
+function updateCounter() {
+  counterEl.textContent = entries.length > 0 ? `${entries.length} answers` : '';
+}
+
+// ── Flash hint ──
+let flashEl = null;
+function showFlash(text) {
+  if (!flashEl) {
+    flashEl = document.createElement('div');
+    flashEl.className = 'coach-flash';
+    coachFeed.appendChild(flashEl);
+  }
+  flashEl.textContent = text;
+  flashEl.style.display = 'block';
+  flashEl.style.opacity = '0.8';
+  coachFeed.scrollTop = coachFeed.scrollHeight;
+}
+function hideFlash() {
+  if (flashEl) {
+    flashEl.style.opacity = '0';
+    setTimeout(() => { if (flashEl) flashEl.style.display = 'none'; }, 400);
+  }
+}
+
+// ── WebSocket ──
+connectBtn.addEventListener('click', doConnect);
+sessionInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doConnect(); });
+
+function doConnect() {
+  const sid = sessionInput.value.trim();
+  if (!sid) return;
+  if (ws) { ws.close(); ws = null; }
+  connectBtn.disabled = true;
+  connectBtn.textContent = 'Connecting...';
+
+  const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${wsProto}://${location.host}/ws/dashboard/${sid}`);
+
+  ws.onopen = () => {
+    connected = true;
+    statusDot.classList.add('connected');
+    connectBtn.textContent = 'Connected';
+    statusText.textContent = 'Connected';
+    sendModeUpdate();
+    autoSendContext();
+    // Keepalive
+    setInterval(() => {
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' }));
+    }, 15000);
+  };
+
+  ws.onclose = () => {
+    connected = false;
+    statusDot.classList.remove('connected');
+    connectBtn.disabled = false;
+    connectBtn.textContent = 'Connect';
+    statusText.textContent = 'Disconnected';
+  };
+
+  ws.onerror = () => {};
+
+  ws.onmessage = (e) => {
+    try { handleMessage(JSON.parse(e.data)); } catch (err) { console.error(err); }
+  };
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'status':
+      statusText.textContent = msg.message || msg.status || '';
+      break;
+
+    case 'transcript':
+      addTranscript(msg.speaker, msg.text, msg.is_final);
+      break;
+
+    case 'generation_ready':
+      // Manual mode: interviewer finished, waiting for user to trigger
+      pendingQuestion = msg.question || '';
+      genPendingText.textContent = `Q: ${pendingQuestion.substring(0, 80)}${pendingQuestion.length > 80 ? '...' : ''}`;
+      genPending.classList.add('visible');
+      break;
+
+    case 'suggestion_flash':
+      showFlash(msg.text);
+      break;
+
+    case 'suggestion_start':
+      genPending.classList.remove('visible');
+      hideFlash();
+      createCoachEntry(msg.question || '', msg.is_continuation || false);
+      break;
+
+    case 'suggestion_chunk':
+      if (activeIdx >= 0) appendToEntry(activeIdx, msg.text);
+      break;
+
+    case 'suggestion_end':
+      if (activeIdx >= 0) finalizeEntry(activeIdx, msg.full_text);
+      hideFlash();
+      break;
+
+    case 'card_push':
+      addCardToRelay(msg);
+      break;
+
+    case 'cards_complete':
+      finalizeCardRelay(msg.total, msg.card_ids);
+      break;
+
+    case 'overlay_auto_relay_ack':
+      updateAutoRelayUI(msg.enabled);
+      break;
+
+    case 'suggestion_cancelled':
+      if (activeIdx >= 0) cancelEntry(activeIdx);
+      break;
+
+    case 'tts_start':
+      stopAudio();
+      onTTSStart(msg);
+      break;
+
+    case 'tts_chunk':
+      if (msg.audio) playAudioChunk(msg.audio);
+      break;
+
+    case 'tts_end':
+      // Audio queue will drain naturally
+      break;
+
+    case 'mode_ack':
+      statusText.textContent = `Mode: ${msg.mode} | TTS: ${msg.tts_enabled ? 'on' : 'off'}`;
+      break;
+
+    case 'context_ack': {
+      statusText.textContent = msg.message;
+      const stratStatus = document.getElementById('strategy-status');
+      if (msg.strategy_compiled) {
+        stratStatus.textContent = `Strategy ready: ${msg.round_type} round, ${msg.seniority_level} level`;
+        stratStatus.style.color = '#4ade80';
+        if (msg.gaps_resolved) {
+          stratStatus.textContent += ' (refined with your input)';
+        }
+        setTimeout(() => closeDrawer(), 1200);
+      } else if (msg.message.includes('Compiling') || msg.message.includes('Refining')) {
+        stratStatus.textContent = msg.message;
+        stratStatus.style.color = 'var(--accent)';
+      } else {
+        stratStatus.textContent = msg.message;
+        stratStatus.style.color = 'var(--dim)';
+        setTimeout(() => closeDrawer(), 1500);
+      }
+      setTimeout(() => { statusText.textContent = ''; }, 4000);
+      break;
+    }
+
+    case 'strategy_gaps':
+      showGaps(msg.gaps || []);
+      break;
+
+    case 'latency_report':
+      showLatencyReport(msg);
+      break;
+
+    case 'limit_reached':
+      statusText.textContent = msg.message;
+      statusText.style.color = 'var(--red)';
+      break;
+
+    case 'credit_warning':
+      statusText.textContent = msg.message;
+      statusText.style.color = '#d9915a';
+      break;
+
+    case 'error':
+      statusText.textContent = msg.message;
+      statusText.style.color = 'var(--red)';
+      setTimeout(() => { statusText.style.color = ''; }, 3000);
+      break;
+
+    case 'candidate_context': {
+      const ctx = msg.context || {};
+      const map = {
+        resume: 'ctx-resume',
+        jd: 'ctx-jd',
+        interviewer: 'ctx-interviewer',
+        prep_notes: 'ctx-recruiter',
+      };
+      for (const [key, elId] of Object.entries(map)) {
+        if (ctx[key]) document.getElementById(elId).value = ctx[key];
+      }
+      // Merge company + culture into the values field
+      const valParts = [];
+      if (ctx.company) valParts.push('Company: ' + ctx.company);
+      if (ctx.culture_values) valParts.push(ctx.culture_values);
+      if (valParts.length) document.getElementById('ctx-values').value = valParts.join('\n\n');
+
+      // Persist and auto-send
+      saveContext();
+      const who = msg.candidate_name || 'Candidate';
+      statusText.textContent = `Context received from ${who}`;
+      setTimeout(() => { statusText.textContent = ''; }, 4000);
+      break;
+    }
+
+    case 'pong':
+      break;
+  }
+}
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+  if (e.key === 'g' && !genAuto && pendingQuestion) {
+    e.preventDefault();
+    triggerGenerate();
+  } else if (e.key === 'p' && entries.length > 0) {
+    e.preventDefault();
+    const last = entries[entries.length - 1];
+    if (last.status === 'done' && last.answer) playTTS(last.answer);
+  } else if (e.key === 'c' && entries.length > 0) {
+    const focused = entries.findLast(e => e.status === 'done');
+    if (focused) navigator.clipboard.writeText(focused.answer);
+  } else if (e.key === 'Escape') {
+    closeDrawer();
+  }
+});
+
+// ── Helpers ──
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ═══════════════════════════════════════════════════════════════
+// Latency Report
+// ═══════════════════════════════════════════════════════════════
+
+function showLatencyReport(r) {
+  const bar = document.getElementById('latency-bar');
+  const providerClass = r.provider === 'groq' ? 'lb-groq' : 'lb-claude';
+  bar.innerHTML = `
+    <span class="lb-provider ${providerClass}">${r.provider}</span>
+    <span><span class="lb-label">TTFT</span> <span class="lb-val">${r.ttft_ms}ms</span></span>
+    <span><span class="lb-label">Classify</span> <span class="lb-val">${r.classify_ms}ms</span></span>
+    ${r.groq_flash_ms ? `<span><span class="lb-label">Flash</span> <span class="lb-val">${r.groq_flash_ms}ms</span></span>` : ''}
+    <span><span class="lb-label">Total</span> <span class="lb-val">${r.total_ms}ms</span></span>
+    <span><span class="lb-label">Type</span> <span class="lb-val">${r.question_type}</span></span>
+    <span><span class="lb-label">Words</span> <span class="lb-val">${r.word_count}</span></span>
+  `;
+  bar.style.display = 'flex';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Strategy Gap Questionnaire
+// ═══════════════════════════════════════════════════════════════
+
+let currentGaps = [];
+let gapAnswers = {};
+
+function showGaps(gaps) {
+  if (!gaps || !gaps.length) return;
+  currentGaps = gaps;
+  gapAnswers = {};
+  const container = document.getElementById('gap-items');
+  container.innerHTML = gaps.map((g, i) => {
+    if (g.options && g.options.length) {
+      const opts = g.options.map(o =>
+        `<span class="gap-option" data-gap="${g.id}" data-val="${esc(o)}" onclick="selectGapOption(this)">${esc(o)}</span>`
+      ).join('');
+      return `<div class="gap-item">
+        <div class="gap-question">${i + 1}. ${esc(g.question)}</div>
+        <div class="gap-options">${opts}</div>
+      </div>`;
+    } else {
+      return `<div class="gap-item">
+        <div class="gap-question">${i + 1}. ${esc(g.question)}</div>
+        <input class="gap-freetext" data-gap="${g.id}" placeholder="Type your answer..." oninput="gapAnswers['${g.id}']=this.value">
+      </div>`;
+    }
+  }).join('');
+  document.getElementById('gap-panel').classList.add('open');
+}
+
+function selectGapOption(el) {
+  const gapId = el.dataset.gap;
+  const val = el.dataset.val;
+  el.parentElement.querySelectorAll('.gap-option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  gapAnswers[gapId] = val;
+}
+
+function submitGapAnswers() {
+  if (!ws || ws.readyState !== 1) return;
+  const answers = {};
+  for (const gap of currentGaps) {
+    const answer = gapAnswers[gap.id];
+    if (answer) answers[gap.question] = answer;
+  }
+  if (Object.keys(answers).length === 0) {
+    dismissGaps();
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'answer_gaps', answers }));
+  document.getElementById('gap-panel').classList.remove('open');
+  statusText.textContent = 'Refining strategy...';
+}
+
+function dismissGaps() {
+  document.getElementById('gap-panel').classList.remove('open');
+  currentGaps = [];
+  gapAnswers = {};
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Simulation Mode
+// ═══════════════════════════════════════════════════════════════
+
+const SIM_QUESTIONS = [
+  "Tell me about yourself and your background.",
+  "Why are you interested in this role at our company?",
+  "Can you walk me through a challenging project you led recently?",
+  "How do you handle disagreements with team members during a design review?",
+  "Describe a time you had to make a difficult tradeoff between shipping speed and code quality.",
+  "What's your approach to system design for a high-traffic distributed service?",
+  "Tell me about a time you mentored a junior engineer. What was the outcome?",
+  "How would you design a URL shortener that handles 10 million requests per day?",
+  "What's a technical decision you made that you later regretted, and what did you learn?",
+  "Where do you see yourself in five years?",
+];
+
+let simOpen = false;
+let simAutoRunning = false;
+let simAutoTimer = null;
+let simQueueIdx = 0;
+let simWaitingForAnswer = false;
+
+// Populate preset buttons
+const simPresetsEl = document.getElementById('sim-presets');
+SIM_QUESTIONS.forEach((q, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'sim-preset';
+  btn.textContent = q.length > 50 ? q.substring(0, 47) + '...' : q;
+  btn.title = q;
+  btn.onclick = () => simSendSpecific(q);
+  simPresetsEl.appendChild(btn);
+});
+
+function toggleSim() {
+  simOpen = !simOpen;
+  document.getElementById('sim-panel').classList.toggle('open', simOpen);
+}
+
+function simSendQuestion() {
+  const input = document.getElementById('sim-question');
+  const q = input.value.trim();
+  if (!q) return;
+  _simSend(q);
+  input.value = '';
+}
+
+function simSendSpecific(q) {
+  _simSend(q);
+}
+
+function _simSend(question) {
+  if (!ws || ws.readyState !== 1) {
+    statusText.textContent = 'Connect first';
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'simulate_question', question }));
+  simWaitingForAnswer = true;
+}
+
+function toggleSimAuto() {
+  const btn = document.getElementById('sim-auto-btn');
+  const timerEl = document.getElementById('sim-timer');
+  if (simAutoRunning) {
+    simAutoRunning = false;
+    clearTimeout(simAutoTimer);
+    btn.textContent = 'Start Auto-Run';
+    btn.classList.remove('btn-green');
+    timerEl.textContent = '';
+  } else {
+    simAutoRunning = true;
+    simQueueIdx = 0;
+    btn.textContent = 'Stop';
+    btn.classList.add('btn-green');
+    simFireNext();
+  }
+}
+
+function simFireNext() {
+  if (!simAutoRunning) return;
+  if (simQueueIdx >= SIM_QUESTIONS.length) {
+    simQueueIdx = 0; // loop
+  }
+  const q = SIM_QUESTIONS[simQueueIdx++];
+  _simSend(q);
+  document.getElementById('sim-timer').textContent = `Q${simQueueIdx}/${SIM_QUESTIONS.length}`;
+}
+
+function simScheduleNext() {
+  if (!simAutoRunning) return;
+  let countdown = 5;
+  const timerEl = document.getElementById('sim-timer');
+  timerEl.textContent = `Next in ${countdown}s`;
+  simAutoTimer = setInterval(() => {
+    countdown--;
+    if (countdown <= 0) {
+      clearInterval(simAutoTimer);
+      simFireNext();
+    } else {
+      timerEl.textContent = `Next in ${countdown}s`;
+    }
+  }, 1000);
+}
+
+// Hook into suggestion_end to trigger next sim question
+const _origHandleMessage = handleMessage;
+handleMessage = function(msg) {
+  _origHandleMessage(msg);
+  if (msg.type === 'suggestion_end' && simAutoRunning) {
+    simWaitingForAnswer = false;
+    simScheduleNext();
+  }
+};
+
+// Allow Enter key in sim input
+document.getElementById('sim-question').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); simSendQuestion(); }
+});
+
+// ── Card Relay ──
+let relayCards = [];
+const cardRelayPanel = document.getElementById('card-relay-panel');
+const cardRelayFeed = document.getElementById('card-relay-feed');
+const overlayCountEl = document.getElementById('overlay-count');
+const autoRelayToggle = document.getElementById('auto-relay-toggle');
+
+function addCardToRelay(cardData) {
+  cardRelayPanel.style.display = 'flex';
+  relayCards.push(cardData);
+
+  const el = document.createElement('div');
+  el.className = 'relay-card' + (cardData.is_whiteboard ? ' whiteboard' : '');
+  el.dataset.cardId = cardData.card_id;
+  el.innerHTML = `
+    <span class="relay-card-idx">${cardData.is_whiteboard ? 'Whiteboard' : '#' + (cardData.index + 1)}</span>
+    <span class="relay-card-text">${esc(cardData.text)}</span>
+  `;
+  el.onclick = () => relaySingleCard(cardData, el);
+  cardRelayFeed.appendChild(el);
+  cardRelayFeed.scrollLeft = cardRelayFeed.scrollWidth;
+}
+
+function finalizeCardRelay(total, cardIds) {
+  // Visual update — all cards now available
+}
+
+function relaySingleCard(cardData, el) {
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(JSON.stringify({ type: 'relay_card', card: cardData }));
+  el.classList.add('sent');
+}
+
+function relayAllCards() {
+  if (!ws || ws.readyState !== 1 || relayCards.length === 0) return;
+  ws.send(JSON.stringify({ type: 'relay_all_cards', cards: relayCards }));
+  cardRelayFeed.querySelectorAll('.relay-card').forEach(el => el.classList.add('sent'));
+}
+
+function toggleAutoRelay() {
+  if (!ws || ws.readyState !== 1) return;
+  const enabled = autoRelayToggle.checked;
+  ws.send(JSON.stringify({ type: 'set_overlay_auto_relay', enabled }));
+}
+
+function updateAutoRelayUI(enabled) {
+  autoRelayToggle.checked = enabled;
+}
+
+// Clear cards on new suggestion
+const _origHandleMsg2 = handleMessage;
+handleMessage = function(msg) {
+  _origHandleMsg2(msg);
+  if (msg.type === 'suggestion_start') {
+    relayCards = [];
+    cardRelayFeed.innerHTML = '';
+  }
+};
+
+// Auto-connect if session ID is in URL
+if (SESSION_ID_PARAM) setTimeout(doConnect, 300);
+</script>
+</body>
+</html>
