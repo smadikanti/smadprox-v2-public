@@ -1716,12 +1716,28 @@ async function toggleOperatorMic() {
 
 async function startOperatorMic() {
   try {
+    if (!DEEPGRAM_KEY) {
+      console.warn('[OperatorMic] Deepgram key not loaded yet, fetching...');
+      try {
+        const r = await fetch(location.origin + '/api/config/deepgram-key');
+        const d = await r.json();
+        DEEPGRAM_KEY = d.key || '';
+      } catch(e) {}
+      if (!DEEPGRAM_KEY) {
+        alert('Deepgram key not available. Check backend config.');
+        return;
+      }
+    }
+    console.log('[OperatorMic] Key available, length:', DEEPGRAM_KEY.length);
+
     operatorMicStream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true }
     });
+    console.log('[OperatorMic] Got mic stream');
 
-    // Connect to Deepgram for transcription
-    const dgUrl = 'wss://api.deepgram.com/v1/listen?model=nova-2&language=en&smart_format=true&interim_results=true&endpointing=300';
+    // Connect to Deepgram for transcription (browser auth via subprotocol)
+    const dgUrl = 'wss://api.deepgram.com/v1/listen?model=nova-2&language=en&smart_format=true&interim_results=true&endpointing=300&encoding=linear16&sample_rate=16000&channels=1';
+    console.log('[OperatorMic] Connecting to Deepgram...');
     operatorDgWs = new WebSocket(dgUrl, ['token', DEEPGRAM_KEY]);
 
     operatorDgWs.onopen = () => {
@@ -1814,12 +1830,17 @@ async function startOperatorMic() {
       } catch (e) { /* ignore parse errors */ }
     };
 
-    operatorDgWs.onclose = () => {
+    operatorDgWs.onclose = (e) => {
+      console.warn('[OperatorMic] Deepgram WS closed:', e.code, e.reason);
       if (operatorMicActive) stopOperatorMic();
     };
 
+    operatorDgWs.onerror = (e) => {
+      console.error('[OperatorMic] Deepgram WS error:', e);
+    };
+
   } catch (err) {
-    console.error('Operator mic error:', err);
+    console.error('[OperatorMic] Failed to start:', err);
     alert('Failed to start microphone: ' + err.message);
   }
 }
