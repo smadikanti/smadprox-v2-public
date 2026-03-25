@@ -1039,6 +1039,46 @@ async def dual_deepgram_receiver(
         logger.error(f"[Dual:{speaker}] Deepgram receiver error: {e}")
 
 
+def _generate_instant_filler(q_type: str, question: str, session) -> str:
+    """
+    Generate an instant filler line based on question type.
+    This runs synchronously (no API call) for <10ms latency.
+    The filler gives the candidate something to say while Claude generates.
+    """
+    # Extract key terms from the question for specificity
+    q_lower = question.lower()
+
+    if q_type == "quick_answer":
+        return ""  # Quick answers are fast enough, no filler needed
+
+    if "tell me about yourself" in q_lower or "walk me through" in q_lower:
+        return "Sure, so a bit about my background..."
+
+    if "tell me about a time" in q_lower or "give me an example" in q_lower:
+        if "conflict" in q_lower or "disagree" in q_lower:
+            return "Yeah, so there was a situation where I had to navigate a disagreement on the team..."
+        if "challenge" in q_lower or "difficult" in q_lower:
+            return "So one situation that comes to mind is a pretty challenging technical problem we faced..."
+        if "leader" in q_lower or "led" in q_lower:
+            return "Yeah, so there was a project where I took the lead on the technical direction..."
+        return "Yeah, so one situation that comes to mind..."
+
+    if "design" in q_lower or "architect" in q_lower or "system" in q_lower:
+        return "So let me think through the architecture here..."
+
+    if "why" in q_lower and ("company" in q_lower or "role" in q_lower or "interested" in q_lower):
+        return "Yeah, so what really drew me to this role..."
+
+    if "code" in q_lower or "implement" in q_lower or "function" in q_lower:
+        return "Alright, let me think through the approach here..."
+
+    # Check if we have prior context to generate a more specific filler
+    if session.last_suggestion:
+        return "Right, so building on that..."
+
+    return "Yeah, so thinking about this..."
+
+
 async def generate_dual_suggestion(session: DualSession, last_interviewer_text: str) -> None:
     """
     Generate a continuation-aware Claude suggestion when the interviewer finishes speaking.
@@ -1063,7 +1103,12 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
 
     session.generating_suggestion = True
 
-    # ── Latency tracking ──
+    # ── Metrics tracking ──
+    from app.metrics import SessionMetricsTracker
+    if not hasattr(session, '_metrics'):
+        session._metrics = SessionMetricsTracker(session.session_id)
+    metrics = session._metrics.start_question(last_interviewer_text)
+
     t_start = time.monotonic()
     t_classify_done = 0.0
     t_first_token = 0.0
@@ -1081,6 +1126,41 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
     # Classify question type via Groq (~50ms) for progressive disclosure
     q_type = await classify_question(interviewer_text)
     t_classify_done = time.monotonic()
+    metrics._t_classify_done = t_classify_done
+    metrics.question_type = q_type
+    metrics.classify_ms = round((t_classify_done - t_start) * 1000, 1)
+
+    # ── INSTANT FILLER: push a bridge card within ~50ms of EndOfTurn ──
+    # This is the key to <200ms TTFC — show SOMETHING immediately
+    if session.overlay_viewers or session.dashboard_viewers:
+        filler_text = _generate_instant_filler(q_type, interviewer_text, session)
+        if filler_text:
+            import uuid
+            filler_id = "filler-" + str(uuid.uuid4())[:6]
+            filler_msg = {
+                "type": "card_push",
+                "card_id": filler_id,
+                "text": filler_text,
+                "index": 0,
+                "total": 0,
+                "is_filler": True,
+                "is_whiteboard": False,
+                "is_continuation": False,
+                "is_final": False,
+                "instruction": "You can say this while we prepare your answer",
+                "estimated_seconds": 3,
+            }
+            await send_to_dashboard(session, filler_msg)
+            if session.overlay_viewers:
+                await send_to_overlay(session, filler_msg)
+            metrics.filler_generated = True
+            metrics.filler_text = filler_text
+            metrics.filler_source = "instant"
+            metrics._t_filler_sent = time.monotonic()
+            logger.info(
+                f"[Dual] Filler sent in {round((metrics._t_filler_sent - t_start)*1000)}ms: "
+                f"{filler_text[:60]}"
+            )
 
     try:
         # ── Quick-answer fast-path: Groq as PRIMARY responder ──
@@ -1225,6 +1305,7 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
 
             if not full_text:
                 t_first_token = time.monotonic()
+                metrics._t_first_token = t_first_token
 
             # Before the first Claude chunk, try to send Groq flash
             if not flash_sent and flash_task is not None:
@@ -1260,11 +1341,21 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
             actions = card_buf.feed(chunk)
             for action in actions:
                 if action["action"] == "push":
+                    # First real card — demote filler if one was sent
+                    if metrics.filler_generated and metrics.total_cards == 0:
+                        if session.overlay_viewers:
+                            await send_to_overlay(session, {"type": "card_demote", "card_id": filler_id})
+                        await send_to_dashboard(session, {"type": "card_demote", "card_id": filler_id})
+                    if not metrics._t_first_card:
+                        metrics._t_first_card = time.monotonic()
+                    metrics.total_cards += 1
                     msg = card_to_message(action["card"])
                     await send_to_dashboard(session, msg)
                     if session.overlay_auto_relay and session.overlay_viewers:
                         await send_to_overlay(session, msg)
+                        metrics.cards_auto_relayed += 1
                 elif action["action"] == "update":
+                    metrics.card_updates_sent += 1
                     msg = {"type": "card_update", "card_id": action["card_id"], "text": action["text"]}
                     await send_to_dashboard(session, msg)
                     if session.overlay_auto_relay and session.overlay_viewers:
@@ -1311,6 +1402,10 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
         session.last_suggestion = full_text
         session.candidate_progress = ""
         session._candidate_current_turn = ""
+
+        # Record answer metrics
+        metrics.answer_text = full_text
+        metrics.answer_word_count = len(full_text.split())
 
         # Update round-specific evolving state
         if session.round_type == "system_design":
@@ -1369,14 +1464,21 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
 
     except asyncio.CancelledError:
         logger.info("[Dual] Suggestion generation cancelled (new speech detected)")
+        metrics.record_error("cancelled")
     except Exception as e:
         logger.error(f"[Dual] Suggestion generation error: {e}")
+        metrics.record_error(str(e))
         await send_to_dashboard(session, {
             "type": "error",
             "message": f"Failed to generate suggestion: {str(e)}",
         })
     finally:
         session.generating_suggestion = False
+        # Log metrics for this question
+        metrics._t_generation_done = time.monotonic()
+        metrics.provider = provider_used
+        if hasattr(session, '_metrics'):
+            session._metrics.finish_question()
 
 
 async def start_interviewer_pipeline(session: DualSession) -> None:

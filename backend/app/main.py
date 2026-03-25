@@ -1808,6 +1808,17 @@ async def generate_script_endpoint(submission_id: str):
         raise HTTPException(500, f"Script generation failed: {e}")
 
 
+@app.get("/api/session/{session_id}/metrics")
+async def get_session_metrics(session_id: str):
+    """Get performance metrics for a session."""
+    if session_id not in dual_sessions:
+        raise HTTPException(404, "Session not found")
+    session = dual_sessions[session_id]
+    if hasattr(session, '_metrics'):
+        return session._metrics.get_summary()
+    return {"session_id": session_id, "message": "No metrics recorded yet"}
+
+
 @app.get("/api/candidates")
 async def list_candidates():
     """List all candidates with generated scripts."""
