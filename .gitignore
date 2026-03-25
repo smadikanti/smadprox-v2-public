@@ -10,3 +10,8 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+
+# Test fixtures (generated, not stored in git)
+tests/fixtures/questions/*.raw
+tests/fixtures/questions/manifest.txt
+/tmp/smadprox-metrics.jsonl
