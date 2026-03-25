@@ -1348,13 +1348,10 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
         # Persist AI generation to DB
         asyncio.create_task(_save_event(session.session_id, "ai_suggestion", full_text))
 
-        # ── TTS: stream audio to dashboard when enabled (HumanProx mode) ──
-        if session.tts_enabled and full_text and elevenlabs_available():
-            if session.tts_auto:
-                asyncio.create_task(
-                    _stream_tts_to_dashboard(session, full_text)
-                )
-            # else: supervision mode — dashboard shows Play button, sends play_tts
+        # ── TTS: disabled in v2 (cards replace audio relay) ──
+        # if session.tts_enabled and full_text and elevenlabs_available():
+        #     if session.tts_auto:
+        #         asyncio.create_task(_stream_tts_to_dashboard(session, full_text))
 
         # ── Deduct free generation if using free trial ──
         if session.user_id:
