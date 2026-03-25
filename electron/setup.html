@@ -124,54 +124,32 @@
       <div class="step-dot active" id="dot-1"></div>
       <div class="step-dot" id="dot-2"></div>
       <div class="step-dot" id="dot-3"></div>
-      <div class="step-dot" id="dot-4"></div>
     </div>
 
-    <!-- Step 1: BlackHole Setup -->
+    <!-- Step 1: Select Microphone -->
     <div class="step active" id="step-1">
       <div class="step-header">
         <div class="step-number">1</div>
-        <div class="step-title">Install BlackHole</div>
+        <div class="step-title">Select Microphone</div>
       </div>
-      <p>BlackHole is a virtual audio device that lets us capture what your interviewer says through your system audio.</p>
-      <p>After installing, open <strong>Audio MIDI Setup</strong> and create a <strong>Multi-Output Device</strong> that includes your speakers + BlackHole 2ch.</p>
-      <div class="btn-row">
-        <button class="btn btn-secondary" id="btn-download-blackhole">Download BlackHole 2ch</button>
-        <button class="btn btn-secondary" id="btn-open-midi">Open Audio MIDI Setup</button>
-      </div>
-      <div class="btn-row" style="margin-top:16px;">
-        <button class="btn btn-primary" id="btn-step1-next">I've done this</button>
-      </div>
-    </div>
-
-    <!-- Step 2: Select Devices -->
-    <div class="step" id="step-2">
-      <div class="step-header">
-        <div class="step-number">2</div>
-        <div class="step-title">Select Audio Devices</div>
-      </div>
-      <div class="input-group">
-        <label>System Audio (interviewer)</label>
-        <select id="sys-device"></select>
-      </div>
+      <p>System audio (interviewer) is captured automatically — no extra setup needed.</p>
       <div class="input-group">
         <label>Microphone (you)</label>
         <select id="mic-device"></select>
       </div>
       <p id="device-warning" class="error-msg" style="display:none;"></p>
       <div class="btn-row">
-        <button class="btn btn-secondary" id="btn-step2-back">Back</button>
-        <button class="btn btn-primary" id="btn-step2-next">Next</button>
+        <button class="btn btn-primary" id="btn-step1-next">Next</button>
       </div>
     </div>
 
-    <!-- Step 3: Test with YouTube -->
-    <div class="step" id="step-3">
+    <!-- Step 2: Test Audio Capture -->
+    <div class="step" id="step-2">
       <div class="step-header">
-        <div class="step-number">3</div>
+        <div class="step-number">2</div>
         <div class="step-title">Test Audio Capture</div>
       </div>
-      <p>Play any video on YouTube. You should see the transcript appear below in real-time.</p>
+      <p>Play any video on YouTube. You should see the system audio level bar move in real-time.</p>
       <button class="btn btn-link" id="btn-open-youtube">Open a YouTube test video</button>
       <div class="level-bars">
         <div class="level-bar-wrap">
@@ -189,15 +167,15 @@
         <li><span class="check-icon wait" id="check-transcript">~</span> Transcript coming through</li>
       </ul>
       <div class="btn-row">
-        <button class="btn btn-secondary" id="btn-step3-back">Back</button>
-        <button class="btn btn-primary" id="btn-step3-next">Looks good</button>
+        <button class="btn btn-secondary" id="btn-step2-back">Back</button>
+        <button class="btn btn-primary" id="btn-step2-next">Looks good</button>
       </div>
     </div>
 
-    <!-- Step 4: Candidate ID & Start -->
-    <div class="step" id="step-4">
+    <!-- Step 3: Candidate ID & Start -->
+    <div class="step" id="step-3">
       <div class="step-header">
-        <div class="step-number">4</div>
+        <div class="step-number">3</div>
         <div class="step-title">Ready to Go</div>
       </div>
       <div class="input-group">
@@ -218,7 +196,7 @@
       </ul>
 
       <div class="btn-row">
-        <button class="btn btn-secondary" id="btn-step4-back">Back</button>
+        <button class="btn btn-secondary" id="btn-step3-back">Back</button>
         <button class="btn btn-start" id="btn-start" disabled style="flex:1;">Start Interview</button>
       </div>
       <p id="start-error" class="error-msg" style="display:none;"></p>

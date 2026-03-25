@@ -4,7 +4,7 @@
   "description": "Interview coaching overlay — single app with setup wizard + invisible overlay",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "open ./node_modules/electron/dist/Electron.app --args .",
     "build": "electron-builder --mac",
     "build:dmg": "electron-builder --mac dmg"
   },

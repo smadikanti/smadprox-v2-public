@@ -8,7 +8,6 @@ contextBridge.exposeInMainWorld('smadprox', {
 
   // External links
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
-  openAudioMidi: () => ipcRenderer.invoke('open-audio-midi'),
 
   // Interview lifecycle
   startInterview: (config) => ipcRenderer.send('start-interview', config),

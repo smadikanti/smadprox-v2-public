@@ -6,11 +6,17 @@
  *   - over-phone-smadprox/electron-candidate/main.js (setup window)
  *
  * Two windows:
- *   1. setupWindow — normal visible window for config, BlackHole setup, YouTube test
+ *   1. setupWindow — normal visible window for config, audio test
  *   2. overlayWindow — invisible overlay for coaching cards during interview
+ *
+ * System audio is captured via Electron's loopback audio (getDisplayMedia)
+ * — no BlackHole or virtual audio device needed.
  */
 
-const { app, BrowserWindow, screen, globalShortcut, ipcMain, shell, systemPreferences } = require('electron');
+const { app, BrowserWindow, screen, globalShortcut, ipcMain, shell, systemPreferences, session } = require('electron');
+
+// Required for loopback audio capture on macOS — must be called before app is ready
+app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess');
 const path = require('path');
 const Store = require('electron-store');
 
@@ -18,7 +24,6 @@ const store = new Store({
   defaults: {
     candidateId: '',
     serverUrl: 'https://api.nohuman.live',
-    sysDeviceId: '',
     micDeviceId: '',
     setupComplete: false,
   },
@@ -127,15 +132,11 @@ ipcMain.handle('store-set', (_e, key, val) => store.set(key, val));
 ipcMain.handle('store-all', () => store.store);
 
 ipcMain.handle('open-external', (_e, url) => shell.openExternal(url));
-ipcMain.handle('open-audio-midi', () => {
-  shell.openPath('/System/Applications/Utilities/Audio MIDI Setup.app');
-});
 
 ipcMain.on('start-interview', (_e, config) => {
-  // config: { candidateId, serverUrl, sysDeviceId, micDeviceId }
+  // config: { candidateId, serverUrl, micDeviceId }
   store.set('candidateId', config.candidateId);
   store.set('serverUrl', config.serverUrl);
-  store.set('sysDeviceId', config.sysDeviceId);
   store.set('micDeviceId', config.micDeviceId);
 
   if (setupWindow) setupWindow.hide();
@@ -146,7 +147,6 @@ ipcMain.on('start-interview', (_e, config) => {
     overlayWindow.webContents.send('session-config', {
       candidateId: config.candidateId,
       serverUrl: config.serverUrl,
-      sysDeviceId: config.sysDeviceId,
       micDeviceId: config.micDeviceId,
     });
     overlayWindow.show();
@@ -266,6 +266,12 @@ function sendToOverlay(channel, data) {
 // ─── App Lifecycle ──────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
+  // Loopback audio: tell Electron to return system audio when getDisplayMedia is called.
+  // This MUST be set before any renderer calls getDisplayMedia.
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    callback({ video: null, audio: 'loopback' });
+  });
+
   // Request microphone access from macOS BEFORE creating windows.
   // Without this, getUserMedia returns silent streams on macOS.
   if (process.platform === 'darwin') {

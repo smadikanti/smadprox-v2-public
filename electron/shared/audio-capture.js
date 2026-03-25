@@ -1,8 +1,9 @@
 /**
  * Shared Audio Capture Module
  *
- * Lifted from over-phone-smadprox/shared/audio-capture.js (unchanged).
- * Handles dual audio streams: system audio (BlackHole) + microphone.
+ * Handles dual audio streams: system audio (loopback) + microphone.
+ * System audio is captured via Electron's getDisplayMedia loopback
+ * — no BlackHole or virtual audio device needed.
  * Sends PCM16 @ 16kHz in 80ms chunks over WebSocket.
  */
 
@@ -76,8 +77,11 @@ function audioConstraints(deviceId) {
 /**
  * Open WebSockets and start streaming both audio channels.
  *
+ * System audio is captured via getDisplayMedia (Electron loopback) —
+ * no BlackHole device ID needed. Mic is captured first via getUserMedia
+ * (order matters: getUserMedia before getDisplayMedia avoids Chrome bugs).
+ *
  * @param {Object} opts
- * @param {string} opts.sysDeviceId - system audio device (BlackHole)
  * @param {string} opts.micDeviceId - microphone device
  * @param {string} opts.serverUrl - e.g. "https://api.nohuman.live"
  * @param {string} opts.sessionId - candidate_id used as session key
@@ -86,10 +90,11 @@ function audioConstraints(deviceId) {
  * @returns {Promise<{ stop: function }>}
  */
 async function connectAudioStreams(opts) {
-  const { sysDeviceId, micDeviceId, serverUrl, sessionId, onLevel, onStatus } = opts;
+  const { micDeviceId, serverUrl, sessionId, onLevel, onStatus } = opts;
 
-  const sysStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(sysDeviceId) });
+  // Capture mic FIRST, then system audio — order matters
   const micStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(micDeviceId) });
+  const sysStream = await navigator.mediaDevices.getDisplayMedia({ video: false, audio: true });
 
   const wsProto = serverUrl.startsWith('https') ? 'wss' : 'ws';
   const wsHost = serverUrl.replace(/^https?:\/\//, '');

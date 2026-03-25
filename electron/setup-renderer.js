@@ -1,8 +1,9 @@
 /**
  * SmadProx v2 — Setup Window Renderer
  *
- * All functions exposed on window.* so they work from both
- * addEventListener and inline onclick handlers.
+ * 3-step setup: Select Mic -> Test Audio -> Ready to Go
+ * System audio is captured via Electron loopback (getDisplayMedia)
+ * — no BlackHole or virtual audio device needed.
  */
 
 function initSetup() {
@@ -18,10 +19,9 @@ function initSetup() {
   // ─── DOM refs ─────────────────────────────────────────────────────────────
   const $ = id => document.getElementById(id);
 
-  const steps = [1, 2, 3, 4].map(i => $(`step-${i}`));
-  const dots = [1, 2, 3, 4].map(i => $(`dot-${i}`));
+  const steps = [1, 2, 3].map(i => $(`step-${i}`));
+  const dots = [1, 2, 3].map(i => $(`dot-${i}`));
   const interviewScreen = $('interview-screen');
-  const sysDeviceSelect = $('sys-device');
   const micDeviceSelect = $('mic-device');
   const deviceWarning = $('device-warning');
   const testTranscript = $('test-transcript');
@@ -55,9 +55,9 @@ function initSetup() {
     });
     if (interviewScreen) interviewScreen.classList.remove('active');
 
-    if (n === 2) enumerateDevices();
-    if (n === 3) startTestAudio();
-    if (n === 4) runPreflightChecks();
+    if (n === 1) enumerateDevices();
+    if (n === 2) startTestAudio();
+    if (n === 3) runPreflightChecks();
   }
 
   function showInterviewScreen() {
@@ -65,19 +65,7 @@ function initSetup() {
     if (interviewScreen) interviewScreen.classList.add('active');
   }
 
-  // ─── Step 1: BlackHole ────────────────────────────────────────────────────
-
-  $('btn-download-blackhole').addEventListener('click', () => {
-    smadprox.openExternal('https://existential.audio/blackhole/');
-  });
-
-  $('btn-open-midi').addEventListener('click', () => {
-    smadprox.openAudioMidi();
-  });
-
-  $('btn-step1-next').addEventListener('click', () => goToStep(2));
-
-  // ─── Step 2: Device Selection ─────────────────────────────────────────────
+  // ─── Step 1: Select Microphone ────────────────────────────────────────────
 
   async function enumerateDevices() {
     try {
@@ -85,72 +73,49 @@ function initSetup() {
       devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices.filter(d => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications');
 
-      sysDeviceSelect.innerHTML = '';
       micDeviceSelect.innerHTML = '';
 
-      let bhId = null;
       let micId = null;
 
       audioInputs.forEach(d => {
         const label = d.label || `Device ${d.deviceId.slice(0, 8)}`;
-        sysDeviceSelect.appendChild(new Option(label, d.deviceId));
         micDeviceSelect.appendChild(new Option(label, d.deviceId));
 
-        if (label.toLowerCase().includes('blackhole') || label.toLowerCase().includes('multi-output') || label.toLowerCase().includes('aggregate')) {
-          bhId = d.deviceId;
-        }
         if ((label.toLowerCase().includes('macbook') || label.toLowerCase().includes('built-in')) && !micId) {
           micId = d.deviceId;
         }
       });
 
-      const savedSys = await smadprox.storeGet('sysDeviceId');
       const savedMic = await smadprox.storeGet('micDeviceId');
-
-      if (savedSys && audioInputs.some(d => d.deviceId === savedSys)) sysDeviceSelect.value = savedSys;
-      else if (bhId) sysDeviceSelect.value = bhId;
 
       if (savedMic && audioInputs.some(d => d.deviceId === savedMic)) micDeviceSelect.value = savedMic;
       else if (micId) micDeviceSelect.value = micId;
-
-      validateDeviceSelection();
     } catch (err) {
       deviceWarning.textContent = 'Could not access audio devices. Grant microphone permission and try again.';
       deviceWarning.style.display = 'block';
     }
   }
 
-  function validateDeviceSelection() {
-    const sysLabel = sysDeviceSelect.options[sysDeviceSelect.selectedIndex]?.text || '';
-    const isOk = ['blackhole', 'multi-output', 'aggregate', 'soundflower'].some(k => sysLabel.toLowerCase().includes(k));
-    deviceWarning.textContent = isOk ? '' : `Warning: "${sysLabel}" may not capture system audio. Select a BlackHole or Multi-Output device.`;
-    deviceWarning.style.display = isOk ? 'none' : 'block';
-  }
-
-  sysDeviceSelect.addEventListener('change', validateDeviceSelection);
-
-  $('btn-step2-back').addEventListener('click', () => goToStep(1));
-  $('btn-step2-next').addEventListener('click', () => {
-    smadprox.storeSet('sysDeviceId', sysDeviceSelect.value);
+  $('btn-step1-next').addEventListener('click', () => {
     smadprox.storeSet('micDeviceId', micDeviceSelect.value);
-    goToStep(3);
+    goToStep(2);
   });
 
-  // ─── Step 3: YouTube Test ─────────────────────────────────────────────────
+  // ─── Step 2: Audio Test ───────────────────────────────────────────────────
 
   $('btn-open-youtube').addEventListener('click', () => {
     smadprox.openExternal('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
   });
 
-  $('btn-step3-back').addEventListener('click', async () => {
+  $('btn-step2-back').addEventListener('click', async () => {
     await stopTestAudio();
-    goToStep(2);
+    goToStep(1);
   });
 
-  $('btn-step3-next').addEventListener('click', async () => {
+  $('btn-step2-next').addEventListener('click', async () => {
     await stopTestAudio();
     smadprox.storeSet('setupComplete', true);
-    goToStep(4);
+    goToStep(3);
   });
 
   async function startTestAudio() {
@@ -161,23 +126,24 @@ function initSetup() {
     checkTranscript.textContent = '~'; checkTranscript.className = 'check-icon wait';
 
     try {
-      const sysStream = await navigator.mediaDevices.getUserMedia({ audio: window.audioConstraints(sysDeviceSelect.value) });
-      const micStream = await navigator.mediaDevices.getUserMedia({ audio: window.audioConstraints(micDeviceSelect.value) });
+      // Capture mic first, then system audio via loopback — order matters
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(micDeviceSelect.value) });
+      const sysStream = await navigator.mediaDevices.getDisplayMedia({ video: false, audio: true });
 
       const dummyWs = { readyState: 1, send() {} };
 
-      const sysPipeline = window.startAudioPipeline(sysStream, dummyWs, 'sys', (tag, level) => {
+      const sysPipeline = startAudioPipeline(sysStream, dummyWs, 'sys', (tag, level) => {
         sysLevelBar.style.width = Math.round(level * 100) + '%';
         if (level > 0.02 && !sysDetectedAudio) {
           sysDetectedAudio = true;
           checkAudio.textContent = '\u2713'; checkAudio.className = 'check-icon ok';
           checkTranscript.textContent = '\u2713'; checkTranscript.className = 'check-icon ok';
-          testTranscript.textContent = 'System audio detected! Your BlackHole setup is working.';
+          testTranscript.textContent = 'System audio detected! Loopback capture is working.';
           testTranscript.classList.add('has-text');
         }
       });
 
-      const micPipeline = window.startAudioPipeline(micStream, dummyWs, 'mic', (tag, level) => {
+      const micPipeline = startAudioPipeline(micStream, dummyWs, 'mic', (tag, level) => {
         micLevelBar.style.width = Math.round(level * 100) + '%';
       });
 
@@ -200,27 +166,21 @@ function initSetup() {
     micLevelBar.style.width = '0%';
   }
 
-  // ─── Step 4: Pre-flight & Start ───────────────────────────────────────────
+  // ─── Step 3: Pre-flight & Start ───────────────────────────────────────────
 
   async function runPreflightChecks() {
     const savedCandidateId = await smadprox.storeGet('candidateId');
     const savedServerUrl = await smadprox.storeGet('serverUrl');
-    const savedSys = await smadprox.storeGet('sysDeviceId');
     const savedMic = await smadprox.storeGet('micDeviceId');
 
     if (savedCandidateId) candidateIdInput.value = savedCandidateId;
     if (savedServerUrl) serverUrlInput.value = savedServerUrl;
 
-    const sysDevice = devices.find(d => d.deviceId === (savedSys || sysDeviceSelect.value));
-    const micDevice = devices.find(d => d.deviceId === (savedMic || micDeviceSelect.value));
+    // System audio uses loopback — always available
+    sysNameSpan.textContent = 'Loopback (automatic)';
+    checkSys.textContent = '\u2713'; checkSys.className = 'check-icon ok';
 
-    if (sysDevice) {
-      sysNameSpan.textContent = sysDevice.label || 'Selected';
-      checkSys.textContent = '\u2713'; checkSys.className = 'check-icon ok';
-    } else {
-      sysNameSpan.textContent = 'Not selected';
-      checkSys.textContent = '\u2717'; checkSys.className = 'check-icon fail';
-    }
+    const micDevice = devices.find(d => d.deviceId === (savedMic || micDeviceSelect.value));
 
     if (micDevice) {
       micNameSpan.textContent = micDevice.label || 'Selected';
@@ -253,7 +213,6 @@ function initSetup() {
   btnStart.addEventListener('click', async () => {
     const candidateId = candidateIdInput.value.trim();
     const serverUrl = serverUrlInput.value.trim();
-    const sysDeviceId = await smadprox.storeGet('sysDeviceId') || sysDeviceSelect.value;
     const micDeviceId = await smadprox.storeGet('micDeviceId') || micDeviceSelect.value;
 
     if (!candidateId || !serverUrl) {
@@ -266,12 +225,12 @@ function initSetup() {
     await smadprox.storeSet('candidateId', candidateId);
     await smadprox.storeSet('serverUrl', serverUrl);
 
-    smadprox.startInterview({ candidateId, serverUrl, sysDeviceId, micDeviceId });
+    smadprox.startInterview({ candidateId, serverUrl, micDeviceId });
     showInterviewScreen();
 
     try {
-      liveAudioConnection = await window.connectAudioStreams({
-        sysDeviceId, micDeviceId, serverUrl, sessionId: candidateId,
+      liveAudioConnection = await connectAudioStreams({
+        micDeviceId, serverUrl, sessionId: candidateId,
         onLevel: (tag, level) => {
           const pct = Math.round(level * 100) + '%';
           if (tag === 'sys') liveSysLevel.style.width = pct;
@@ -285,7 +244,7 @@ function initSetup() {
     }
   });
 
-  $('btn-step4-back').addEventListener('click', () => goToStep(3));
+  $('btn-step3-back').addEventListener('click', () => goToStep(2));
 
   $('btn-restart').addEventListener('click', async () => {
     // Stop current connection
@@ -299,14 +258,13 @@ function initSetup() {
 
     const candidateId = await smadprox.storeGet('candidateId');
     const serverUrl = await smadprox.storeGet('serverUrl');
-    const sysDeviceId = await smadprox.storeGet('sysDeviceId');
     const micDeviceId = await smadprox.storeGet('micDeviceId');
 
-    smadprox.startInterview({ candidateId, serverUrl, sysDeviceId, micDeviceId });
+    smadprox.startInterview({ candidateId, serverUrl, micDeviceId });
 
     try {
-      liveAudioConnection = await window.connectAudioStreams({
-        sysDeviceId, micDeviceId, serverUrl, sessionId: candidateId,
+      liveAudioConnection = await connectAudioStreams({
+        micDeviceId, serverUrl, sessionId: candidateId,
         onLevel: (tag, level) => {
           const pct = Math.round(level * 100) + '%';
           if (tag === 'sys') liveSysLevel.style.width = pct;
@@ -323,7 +281,7 @@ function initSetup() {
   $('btn-stop').addEventListener('click', () => {
     if (liveAudioConnection) { liveAudioConnection.stop(); liveAudioConnection = null; }
     smadprox.stopInterview();
-    goToStep(4);
+    goToStep(3);
   });
 
   // ─── Init ─────────────────────────────────────────────────────────────────
