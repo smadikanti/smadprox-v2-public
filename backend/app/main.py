@@ -1472,6 +1472,18 @@ async def get_deepgram_key():
     return {"key": settings.DEEPGRAM_API_KEY}
 
 
+@app.get("/api/test/deepgram-connect")
+async def test_deepgram_connect():
+    """Test Deepgram WebSocket connection from the running backend."""
+    from app.pipeline import connect_deepgram
+    try:
+        ws = await connect_deepgram(encoding="linear16", sample_rate=16000)
+        await ws.close()
+        return {"status": "ok", "message": "Deepgram connected and closed"}
+    except Exception as e:
+        return {"status": "fail", "error": str(e)}
+
+
 # ---------------------------------------------------------------------------
 # SaaS API: Clerk-authenticated endpoints
 # ---------------------------------------------------------------------------

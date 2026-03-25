@@ -68,15 +68,20 @@ class TestAudioPipeline:
 
     async def test_audio_reaches_deepgram(self, ws_session, audio_fixture):
         """Audio sent via WebSocket produces a transcript message on the
-        dashboard within 10 seconds."""
+        dashboard within 15 seconds."""
         pcm = audio_fixture("intro")
+        silence = audio_fixture("silence_1s")
 
+        # Send speech audio
         await ws_session.send_audio(pcm)
+        # Send 2 seconds of silence after speech to trigger endpointing
+        await ws_session.send_audio(silence)
+        await ws_session.send_audio(silence)
 
-        msg = await ws_session.wait_for_message("transcript", source="dashboard", timeout=10.0)
+        msg = await ws_session.wait_for_message("transcript", source="dashboard", timeout=15.0)
         assert msg["type"] == "transcript"
-        # Transcript should contain some text (even if partial)
-        assert "text" in msg or "transcript" in msg
+        assert "text" in msg
+        assert len(msg["text"]) > 0
 
     async def test_coaching_generates(self, ws_session, audio_fixture):
         """After audio is transcribed, the backend should emit a

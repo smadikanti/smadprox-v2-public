@@ -190,7 +190,7 @@ async def connect_deepgram(
     Connect to Deepgram Flux v2 API via WebSocket.
     Returns the WebSocket connection.
     """
-    params = "model=nova-2-general&utterance_end_ms=500&interim_results=true&endpointing=300"
+    params = "model=nova-2&smart_format=true&interim_results=true&endpointing=300"
     if not containerized:
         params += f"&encoding={encoding}&sample_rate={sample_rate}"
 
@@ -198,17 +198,28 @@ async def connect_deepgram(
     key = settings.DEEPGRAM_API_KEY
     headers = {"Authorization": f"Token {key}"}
 
-    # Retry up to 3 times with backoff (Deepgram sometimes 400s on rapid reconnects)
+    # Retry up to 3 times with backoff
     for attempt in range(3):
         try:
             ws = await websockets.connect(url, additional_headers=headers)
             logger.info(f"Connected to Deepgram: {url}")
             return ws
+        except websockets.exceptions.InvalidStatus as e:
+            # Log the actual HTTP response body for debugging
+            body = ""
+            if hasattr(e, 'response') and hasattr(e.response, 'body'):
+                body = e.response.body.decode('utf-8', errors='replace') if e.response.body else ""
+            logger.warning(
+                f"[Deepgram] Attempt {attempt+1} HTTP {e.response.status_code if hasattr(e, 'response') else '?'}: {body[:300]}"
+            )
+            if attempt < 2:
+                await asyncio.sleep((attempt + 1) * 2)
+            else:
+                raise
         except Exception as e:
             if attempt < 2:
-                wait = (attempt + 1) * 2
-                logger.warning(f"[Deepgram] Connection attempt {attempt+1} failed: {e}. Retrying in {wait}s...")
-                await asyncio.sleep(wait)
+                logger.warning(f"[Deepgram] Attempt {attempt+1} failed: {e}. Retrying...")
+                await asyncio.sleep((attempt + 1) * 2)
             else:
                 raise
 
@@ -960,6 +971,7 @@ async def dual_deepgram_receiver(
             transcript = ""
             is_final = False
             turn_index = 0
+            flux_event = ""
 
             if msg_type == "TurnInfo":
                 # Flux v2 format
@@ -974,7 +986,9 @@ async def dual_deepgram_receiver(
                 if alternatives:
                     transcript = alternatives[0].get("transcript", "")
                 is_final = event.get("is_final", False)
-                turn_index = event.get("speech_final", False)
+                speech_final = event.get("speech_final", False)
+                turn_index = 0
+                flux_event = "EndOfTurn" if (is_final and speech_final) else "Update"
             else:
                 continue
 
