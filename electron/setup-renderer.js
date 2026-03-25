@@ -287,6 +287,39 @@ function initSetup() {
 
   $('btn-step4-back').addEventListener('click', () => goToStep(3));
 
+  $('btn-restart').addEventListener('click', async () => {
+    // Stop current connection
+    if (liveAudioConnection) { liveAudioConnection.stop(); liveAudioConnection = null; }
+    smadprox.stopInterview();
+
+    // Brief pause then restart with same settings
+    const sub = document.querySelector('.interview-sub');
+    if (sub) sub.textContent = 'Restarting...';
+    await new Promise(r => setTimeout(r, 1000));
+
+    const candidateId = await smadprox.storeGet('candidateId');
+    const serverUrl = await smadprox.storeGet('serverUrl');
+    const sysDeviceId = await smadprox.storeGet('sysDeviceId');
+    const micDeviceId = await smadprox.storeGet('micDeviceId');
+
+    smadprox.startInterview({ candidateId, serverUrl, sysDeviceId, micDeviceId });
+
+    try {
+      liveAudioConnection = await window.connectAudioStreams({
+        sysDeviceId, micDeviceId, serverUrl, sessionId: candidateId,
+        onLevel: (tag, level) => {
+          const pct = Math.round(level * 100) + '%';
+          if (tag === 'sys') liveSysLevel.style.width = pct;
+          else liveMicLevel.style.width = pct;
+        },
+        onStatus: () => {},
+      });
+      if (sub) sub.textContent = 'Overlay is running. Audio is streaming.';
+    } catch (err) {
+      if (sub) sub.textContent = 'Audio not connected: ' + err.message;
+    }
+  });
+
   $('btn-stop').addEventListener('click', () => {
     if (liveAudioConnection) { liveAudioConnection.stop(); liveAudioConnection = null; }
     smadprox.stopInterview();
