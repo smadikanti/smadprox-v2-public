@@ -1256,28 +1256,42 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
                 "text": chunk,
             })
 
-            # Feed chunk to card buffer — emit completed cards
-            new_cards = card_buf.feed(chunk)
-            for card in new_cards:
-                msg = card_to_message(card)
-                # Send to dashboard for card relay panel
-                await send_to_dashboard(session, msg)
-                # Auto-relay to overlay if enabled
-                if session.overlay_auto_relay and session.overlay_viewers:
-                    await send_to_overlay(session, msg)
+            # Feed chunk to card buffer — stream cards in real-time
+            actions = card_buf.feed(chunk)
+            for action in actions:
+                if action["action"] == "push":
+                    msg = card_to_message(action["card"])
+                    await send_to_dashboard(session, msg)
+                    if session.overlay_auto_relay and session.overlay_viewers:
+                        await send_to_overlay(session, msg)
+                elif action["action"] == "update":
+                    msg = {"type": "card_update", "card_id": action["card_id"], "text": action["text"]}
+                    await send_to_dashboard(session, msg)
+                    if session.overlay_auto_relay and session.overlay_viewers:
+                        await send_to_overlay(session, msg)
+                elif action["action"] == "finalize":
+                    msg = {"type": "card_update", "card_id": action["card_id"], "text": action["text"]}
+                    await send_to_dashboard(session, msg)
+                    if session.overlay_auto_relay and session.overlay_viewers:
+                        await send_to_overlay(session, msg)
 
         # Cancel flash task if still running
         if flash_task and not flash_task.done():
             flash_task.cancel()
 
         # Finalize remaining buffer into cards
-        final_cards = card_buf.finalize()
-        for card in final_cards:
-            card.total = len(card_buf.cards)
-            msg = card_to_message(card)
-            await send_to_dashboard(session, msg)
-            if session.overlay_auto_relay and session.overlay_viewers:
-                await send_to_overlay(session, msg)
+        final_actions = card_buf.finalize()
+        for action in final_actions:
+            if action["action"] == "push":
+                msg = card_to_message(action["card"])
+                await send_to_dashboard(session, msg)
+                if session.overlay_auto_relay and session.overlay_viewers:
+                    await send_to_overlay(session, msg)
+            elif action["action"] in ("update", "finalize"):
+                msg = {"type": "card_update", "card_id": action["card_id"], "text": action["text"]}
+                await send_to_dashboard(session, msg)
+                if session.overlay_auto_relay and session.overlay_viewers:
+                    await send_to_overlay(session, msg)
 
         # Set total count on all cards retroactively via a summary message
         total_cards = len(card_buf.cards)

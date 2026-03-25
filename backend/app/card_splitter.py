@@ -4,6 +4,9 @@ Card Splitter — segments coaching answers into relay-ready cards.
 Streaming text from the coaching engine is split on paragraph boundaries,
 [WHITEBOARD]/[SAY] markers, and word-count thresholds. Cards are pushed
 to the candidate overlay via /ws/overlay/{session_id}.
+
+v2: First card appears IMMEDIATELY on first token, then grows via card_update.
+    No waiting for a full paragraph before showing content.
 """
 
 import uuid
@@ -26,43 +29,56 @@ class Card:
     is_whiteboard: bool = False
     is_continuation: bool = False
     is_final: bool = False
+    is_filler: bool = False
 
 
 @dataclass
 class CardBuffer:
-    """Accumulates streaming tokens and emits cards as paragraphs form."""
+    """
+    Accumulates streaming tokens and emits cards.
+
+    v2 behavior:
+    - First card is created immediately on the first token (card_push)
+    - As more tokens stream, the current card is updated (card_update)
+    - When a paragraph break or word limit is hit, the current card finalizes
+      and a new card is created
+    - This means the candidate sees text appearing in real-time, not after
+      a full paragraph is generated
+    """
 
     cards: list[Card] = field(default_factory=list)
     _buffer: str = ""
     _is_continuation: bool = False
+    _current_card_id: str = ""
+    _current_card_text: str = ""
 
     def reset(self, is_continuation: bool = False):
         self.cards = []
         self._buffer = ""
         self._is_continuation = is_continuation
+        self._current_card_id = ""
+        self._current_card_text = ""
 
-    def feed(self, chunk: str) -> list[Card]:
-        """Feed a streaming chunk. Returns any newly completed cards."""
+    def feed(self, chunk: str) -> list[dict]:
+        """
+        Feed a streaming chunk. Returns a list of actions:
+        - {"action": "push", "card": Card}  — new card to display
+        - {"action": "update", "card_id": str, "text": str}  — update existing card text
+        - {"action": "finalize", "card_id": str, "text": str}  — card is complete
+        """
         self._buffer += chunk
-        return self._try_flush()
+        actions = []
 
-    def finalize(self) -> list[Card]:
-        """Flush remaining buffer as the final card."""
-        new_cards = []
-        text = self._buffer.strip()
-        if text:
-            new_cards.extend(self._split_final(text))
-            self._buffer = ""
-        for c in new_cards:
-            c.is_final = True
-        return new_cards
+        # If no current card yet, create one immediately
+        if not self._current_card_id and self._buffer.strip():
+            card = self._make_card(self._buffer.strip())
+            self._current_card_id = card.card_id
+            self._current_card_text = self._buffer.strip()
+            actions.append({"action": "push", "card": card})
+            return actions
 
-    def _try_flush(self) -> list[Card]:
-        """Check if buffer contains complete paragraphs to emit."""
-        new_cards = []
-
+        # Check for paragraph breaks in the buffer
         while True:
-            # Split on double-newline (paragraph break)
             parts = re.split(r'\n\s*\n', self._buffer, maxsplit=1)
             if len(parts) < 2:
                 break
@@ -73,88 +89,101 @@ class CardBuffer:
             if not paragraph:
                 continue
 
-            cards = self._paragraph_to_cards(paragraph)
-            new_cards.extend(cards)
+            # Finalize current card with this paragraph's text
+            if self._current_card_id:
+                actions.append({
+                    "action": "finalize",
+                    "card_id": self._current_card_id,
+                    "text": paragraph,
+                })
+                # Update the card object too
+                for c in self.cards:
+                    if c.card_id == self._current_card_id:
+                        c.text = paragraph
+                        break
+                self._current_card_id = ""
+                self._current_card_text = ""
 
-        # Also flush if buffer is getting long (single giant paragraph)
-        buf_words = len(self._buffer.split())
-        if buf_words > MAX_WORDS_PER_CARD * 1.5:
-            break_point = self._find_sentence_break(self._buffer, MAX_WORDS_PER_CARD)
-            if break_point > 0:
-                fragment = self._buffer[:break_point].strip()
-                self._buffer = self._buffer[break_point:].lstrip()
-                if fragment:
-                    new_cards.extend(self._paragraph_to_cards(fragment))
+            # If there's remaining buffer, start a new card
+            remaining = self._buffer.strip()
+            if remaining:
+                card = self._make_card(remaining)
+                self._current_card_id = card.card_id
+                self._current_card_text = remaining
+                actions.append({"action": "push", "card": card})
 
-        return new_cards
+        # Check word count — split if too long
+        if self._current_card_id:
+            current_words = len(self._buffer.strip().split())
+            if current_words > MAX_WORDS_PER_CARD * 1.5:
+                bp = self._find_sentence_break(self._buffer.strip(), MAX_WORDS_PER_CARD)
+                if bp > 0:
+                    fragment = self._buffer[:bp].strip()
+                    self._buffer = self._buffer[bp:].lstrip()
 
-    def _split_final(self, text: str) -> list[Card]:
-        """Split final text that may contain [WHITEBOARD]/[SAY] markers."""
-        cards = []
-        wb_pattern = re.compile(r'\[WHITEBOARD\](.*?)(?=\[SAY\]|\Z)', re.DOTALL | re.IGNORECASE)
-        say_pattern = re.compile(r'\[SAY\](.*?)(?=\[WHITEBOARD\]|\Z)', re.DOTALL | re.IGNORECASE)
+                    # Finalize current card
+                    actions.append({
+                        "action": "finalize",
+                        "card_id": self._current_card_id,
+                        "text": fragment,
+                    })
+                    for c in self.cards:
+                        if c.card_id == self._current_card_id:
+                            c.text = fragment
+                            break
+                    self._current_card_id = ""
+                    self._current_card_text = ""
 
-        has_markers = bool(wb_pattern.search(text)) or bool(say_pattern.search(text))
+                    # Start new card with remaining
+                    remaining = self._buffer.strip()
+                    if remaining:
+                        card = self._make_card(remaining)
+                        self._current_card_id = card.card_id
+                        self._current_card_text = remaining
+                        actions.append({"action": "push", "card": card})
 
-        if has_markers:
-            for m in wb_pattern.finditer(text):
-                content = m.group(1).strip()
-                if content:
-                    cards.append(self._make_card(content, is_whiteboard=True))
-            for m in say_pattern.finditer(text):
-                content = m.group(1).strip()
-                if content:
-                    cards.extend(self._split_long_text(content))
-        else:
-            cards.extend(self._split_long_text(text))
+            # Update current card with latest text (if text changed)
+            elif self._buffer.strip() and self._buffer.strip() != self._current_card_text:
+                self._current_card_text = self._buffer.strip()
+                actions.append({
+                    "action": "update",
+                    "card_id": self._current_card_id,
+                    "text": self._current_card_text,
+                })
 
-        return cards
+        return actions
 
-    def _paragraph_to_cards(self, text: str) -> list[Card]:
-        """Convert a paragraph to one or more cards."""
-        wb_match = re.match(r'\[WHITEBOARD\]\s*(.*)', text, re.DOTALL | re.IGNORECASE)
-        if wb_match:
-            content = wb_match.group(1).strip()
-            if content:
-                return [self._make_card(content, is_whiteboard=True)]
-            return []
-
-        say_match = re.match(r'\[SAY\]\s*(.*)', text, re.DOTALL | re.IGNORECASE)
-        if say_match:
-            text = say_match.group(1).strip()
-
-        if not text:
-            return []
-
-        return self._split_long_text(text)
-
-    def _split_long_text(self, text: str) -> list[Card]:
-        """Split text exceeding MAX_WORDS_PER_CARD on sentence boundaries."""
-        words = text.split()
-        if len(words) <= MAX_WORDS_PER_CARD:
-            return [self._make_card(text)]
-
-        cards = []
-        remaining = text
-        while remaining:
-            r_words = remaining.split()
-            if len(r_words) <= MAX_WORDS_PER_CARD:
-                cards.append(self._make_card(remaining.strip()))
-                break
-
-            bp = self._find_sentence_break(remaining, MAX_WORDS_PER_CARD)
-            if bp <= 0:
-                bp = remaining.find(' ', len(' '.join(r_words[:MAX_WORDS_PER_CARD])))
-                if bp <= 0:
-                    cards.append(self._make_card(remaining.strip()))
+    def finalize(self) -> list[dict]:
+        """Flush remaining buffer as the final card."""
+        actions = []
+        text = self._buffer.strip()
+        if text and self._current_card_id:
+            actions.append({
+                "action": "finalize",
+                "card_id": self._current_card_id,
+                "text": text,
+            })
+            for c in self.cards:
+                if c.card_id == self._current_card_id:
+                    c.text = text
+                    c.is_final = True
                     break
+        elif text:
+            # Buffer has text but no current card — create final card
+            card = self._make_card(text)
+            card.is_final = True
+            actions.append({"action": "push", "card": card})
 
-            fragment = remaining[:bp].strip()
-            remaining = remaining[bp:].lstrip()
-            if fragment:
-                cards.append(self._make_card(fragment))
+        self._current_card_id = ""
+        self._current_card_text = ""
+        self._buffer = ""
 
-        return cards
+        # Set totals on all cards
+        total = len(self.cards)
+        for c in self.cards:
+            c.total = total
+
+        return actions
 
     def _find_sentence_break(self, text: str, max_words: int) -> int:
         """Find the best sentence-ending break point within max_words."""
