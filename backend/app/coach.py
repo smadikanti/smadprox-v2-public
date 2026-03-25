@@ -1099,7 +1099,7 @@ async def generate_coaching(
             max_tokens=max_tokens,
             system=system,
             messages=messages,
-            extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+            cache_control={"type": "ephemeral"},
         ) as stream:
             async for text in stream.text_stream:
                 yield text
