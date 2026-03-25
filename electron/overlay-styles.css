@@ -118,7 +118,17 @@ body.interactive .speed-btn:hover { background: var(--gray-5); color: var(--gray
 
 /* ─── State Classes ─────────────────────────────────────────────────────── */
 .feed-card.previous { opacity: 0.4; }
-.feed-card.demoted { opacity: 0.3; }
+.feed-card.demoted  { opacity: 0.3; }
+
+/* Current card: full opacity + highlighted border — must override .previous */
+.feed-card.current {
+  opacity: 1;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.10), 0 0 12px 0 rgba(59,130,246,0.12);
+}
+.feed-card.current.ai       { border-left-color: var(--blue); }
+.feed-card.current.operator  { border-left-color: var(--orange); }
+.feed-card.current.filler    { border-left-color: var(--fg-muted); }
+.feed-card.current.whiteboard { border-left-color: var(--yellow); }
 
 /* ─── Card Header ───────────────────────────────────────────────────────── */
 .card-header {

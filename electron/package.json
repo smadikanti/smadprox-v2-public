@@ -20,18 +20,34 @@
     "productName": "SmadProx",
     "mac": {
       "category": "public.app-category.productivity",
-      "target": ["dmg"],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        }
+      ],
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "hardenedRuntime": true,
       "gatekeeperAssess": false
     },
     "files": [
-      "**/*",
-      "!node_modules/.cache"
+      "main.js",
+      "preload-setup.js",
+      "preload-overlay.js",
+      "setup.html",
+      "setup-renderer.js",
+      "overlay.html",
+      "overlay-renderer.js",
+      "overlay-styles.css",
+      "shared/**",
+      "package.json"
     ],
-    "extraResources": [
-      "shared/**"
-    ]
+    "dmg": {
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    }
   }
 }

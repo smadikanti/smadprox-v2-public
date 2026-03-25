@@ -136,17 +136,31 @@ function createCardEl(data) {
   return card;
 }
 
+/**
+ * Centralized dimming: the single `.current` card gets full opacity + highlight,
+ * all other non-demoted cards get `.previous` (40% opacity),
+ * demoted cards keep `.demoted` (30% opacity, handled by CSS).
+ */
+function refreshCardDimming() {
+  const allCards = feedCards.querySelectorAll('.feed-card');
+  allCards.forEach(card => {
+    if (card.classList.contains('current')) {
+      card.classList.remove('previous');
+    } else if (!card.classList.contains('demoted')) {
+      card.classList.add('previous');
+    }
+  });
+}
+
 function addCard(data) {
   cardCount++;
   const el = createCardEl(data);
   feedCards.insertBefore(el, bottomSpacer);
 
-  // Dim all previous AI/operator cards (not fillers — they manage their own opacity)
-  const allCards = feedCards.querySelectorAll('.feed-card:not(.filler)');
-  allCards.forEach((c, i) => {
-    if (i < allCards.length - 1) c.classList.add('previous');
-    else c.classList.remove('previous');
-  });
+  // New card becomes current — previous current gets dimmed
+  feedCards.querySelectorAll('.feed-card.current').forEach(c => c.classList.remove('current'));
+  el.classList.add('current');
+  refreshCardDimming();
 
   // Scroll to new card
   if (autoScroll && !isPaused) {
@@ -160,6 +174,9 @@ function updateCard(cardId, text) {
 
   const body = card.querySelector('.card-body');
   if (!body) return;
+
+  // Card being updated stays in whatever highlight state it already has —
+  // no class changes needed here, just update content.
 
   // Cross-fade: briefly dim, update text, restore
   body.classList.add('updating');
@@ -184,17 +201,22 @@ function highlightCard(cardId) {
   const card = feedCards.querySelector(`.feed-card[data-card-id="${cardId}"]`);
   if (card) {
     card.classList.add('current');
-    if (autoScroll) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+  // Re-apply dimming so old cards get .previous and current loses it
+  refreshCardDimming();
+  if (card && autoScroll) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function demoteCard(cardId) {
   const card = feedCards.querySelector(`.feed-card[data-card-id="${cardId}"]`);
   if (!card) return;
+  card.classList.remove('previous');   // demoted takes priority over previous
+  card.classList.remove('current');    // demoted card is never the current one
   card.classList.add('demoted');
   // Update label
   const label = card.querySelector('.card-label');
   if (label) label.textContent = '(bridge \u2014 answer below)';
+  refreshCardDimming();
 }
 
 function clearCards() {
@@ -333,8 +355,7 @@ feedScroll.addEventListener('wheel', () => {
     }
 
     // Check if current card is already in reading zone (top 15%)
-    const currentCard = feedCards.querySelector('.feed-card:not(.previous):not(.demoted):last-of-type') ||
-                        feedCards.querySelector('.feed-card.current');
+    const currentCard = feedCards.querySelector('.feed-card.current');
     if (currentCard) {
       const rect = currentCard.getBoundingClientRect();
       const containerRect = feedScroll.getBoundingClientRect();
