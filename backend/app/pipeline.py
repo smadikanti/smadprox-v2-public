@@ -190,16 +190,27 @@ async def connect_deepgram(
     Connect to Deepgram Flux v2 API via WebSocket.
     Returns the WebSocket connection.
     """
-    params = "model=flux-general-en&utterance_end_ms=500"
+    params = "model=nova-2-general&utterance_end_ms=500&interim_results=true&endpointing=300"
     if not containerized:
         params += f"&encoding={encoding}&sample_rate={sample_rate}"
 
-    url = f"wss://api.deepgram.com/v2/listen?{params}"
-    headers = {"Authorization": f"Token {settings.DEEPGRAM_API_KEY}"}
+    url = f"wss://api.deepgram.com/v1/listen?{params}"
+    key = settings.DEEPGRAM_API_KEY
+    headers = {"Authorization": f"Token {key}"}
 
-    ws = await websockets.connect(url, additional_headers=headers)
-    logger.info(f"Connected to Deepgram Flux: {url}")
-    return ws
+    # Retry up to 3 times with backoff (Deepgram sometimes 400s on rapid reconnects)
+    for attempt in range(3):
+        try:
+            ws = await websockets.connect(url, additional_headers=headers)
+            logger.info(f"Connected to Deepgram: {url}")
+            return ws
+        except Exception as e:
+            if attempt < 2:
+                wait = (attempt + 1) * 2
+                logger.warning(f"[Deepgram] Connection attempt {attempt+1} failed: {e}. Retrying in {wait}s...")
+                await asyncio.sleep(wait)
+            else:
+                raise
 
 
 async def deepgram_receiver(session: ActiveSession) -> None:
@@ -945,17 +956,30 @@ async def dual_deepgram_receiver(
                 })
                 continue
 
-            if msg_type != "TurnInfo":
-                continue
+            # Handle both Deepgram v1 (Nova-2) and v2 (Flux) response formats
+            transcript = ""
+            is_final = False
+            turn_index = 0
 
-            flux_event = event.get("event", "")
-            transcript = event.get("transcript", "")
-            turn_index = event.get("turn_index", 0)
+            if msg_type == "TurnInfo":
+                # Flux v2 format
+                flux_event = event.get("event", "")
+                transcript = event.get("transcript", "")
+                turn_index = event.get("turn_index", 0)
+                is_final = flux_event == "EndOfTurn"
+            elif msg_type == "Results":
+                # Nova-2 v1 format
+                channel = event.get("channel", {})
+                alternatives = channel.get("alternatives", [])
+                if alternatives:
+                    transcript = alternatives[0].get("transcript", "")
+                is_final = event.get("is_final", False)
+                turn_index = event.get("speech_final", False)
+            else:
+                continue
 
             if not transcript:
                 continue
-
-            is_final = flux_event == "EndOfTurn"
 
             if is_final:
                 session.conversation.append({

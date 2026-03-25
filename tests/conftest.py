@@ -24,8 +24,8 @@ BACKEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'backend')
 ELECTRON_DIR = os.path.join(os.path.dirname(__file__), '..', 'electron')
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), 'fixtures', 'questions')
 
-BACKEND_URL = "http://localhost:8765"  # Test on different port to avoid conflicts
-BACKEND_WS = "ws://localhost:8765"
+BACKEND_URL = os.environ.get("TEST_BACKEND_URL", "http://localhost:8000")
+BACKEND_WS = BACKEND_URL.replace("http://", "ws://")
 DEVTOOLS_PORT = 9333  # Different from dev port 9222
 
 
@@ -40,9 +40,22 @@ def pytest_configure(config):
 
 @pytest.fixture(scope="session")
 def backend_server():
-    """Start the FastAPI backend on port 8765 for testing."""
+    """Use existing backend or start one for testing."""
+    # Check if backend is already running
+    try:
+        resp = httpx.get(f"{BACKEND_URL}/health", timeout=2)
+        if resp.status_code == 200:
+            print(f"\n[conftest] Using existing backend at {BACKEND_URL}")
+            yield BACKEND_URL
+            return
+    except Exception:
+        pass
+
+    # Start a new backend
+    print(f"\n[conftest] Starting backend at {BACKEND_URL}")
+    port = BACKEND_URL.split(":")[-1].rstrip("/")
     env = os.environ.copy()
-    env["PORT"] = "8765"
+    env["PORT"] = port
     env["HOST"] = "0.0.0.0"
 
     proc = subprocess.Popen(
@@ -53,7 +66,6 @@ def backend_server():
         stderr=subprocess.STDOUT,
     )
 
-    # Wait for server to be ready
     for _ in range(30):
         try:
             resp = httpx.get(f"{BACKEND_URL}/health", timeout=2)
@@ -64,11 +76,10 @@ def backend_server():
         time.sleep(1)
     else:
         proc.kill()
-        raise RuntimeError("Backend failed to start within 30 seconds")
+        raise RuntimeError(f"Backend failed to start at {BACKEND_URL}")
 
     yield BACKEND_URL
 
-    # Teardown
     proc.send_signal(signal.SIGTERM)
     try:
         proc.wait(timeout=5)
