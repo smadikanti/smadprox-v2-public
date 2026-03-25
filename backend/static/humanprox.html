@@ -1847,9 +1847,15 @@ function stopOperatorMic() {
   operatorCardText = '';
 }
 
-// Deepgram API key — needed for operator mic transcription in browser
-// This should be set via an environment variable or config
-const DEEPGRAM_KEY = '';  // TODO: set from backend config endpoint
+// Deepgram API key — fetched from backend on load
+let DEEPGRAM_KEY = '';
+(async () => {
+  try {
+    const r = await fetch(location.origin + '/api/config/deepgram-key');
+    const d = await r.json();
+    DEEPGRAM_KEY = d.key || '';
+  } catch(e) { console.warn('Could not fetch Deepgram key:', e); }
+})();
 
 </script>
 </body>

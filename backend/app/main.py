@@ -1453,6 +1453,12 @@ async def health():
     }
 
 
+@app.get("/api/config/deepgram-key")
+async def get_deepgram_key():
+    """Serve Deepgram API key to dashboard for operator mic transcription."""
+    return {"key": settings.DEEPGRAM_API_KEY}
+
+
 # ---------------------------------------------------------------------------
 # SaaS API: Clerk-authenticated endpoints
 # ---------------------------------------------------------------------------
