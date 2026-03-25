@@ -1490,6 +1490,10 @@ async def start_interviewer_pipeline(session: DualSession) -> None:
         session.interviewer_recv_task = asyncio.create_task(
             dual_deepgram_receiver(session, session.interviewer_dg_ws, "interviewer")
         )
+        # Start keepalive task
+        session._interviewer_keepalive = asyncio.create_task(
+            _deepgram_keepalive(session, "interviewer")
+        )
         logger.info(f"Interviewer pipeline started for {session.session_id}")
     except Exception as e:
         logger.error(f"Failed to start interviewer pipeline: {e}")
@@ -1515,6 +1519,10 @@ async def start_candidate_pipeline(
         session.candidate_recv_task = asyncio.create_task(
             dual_deepgram_receiver(session, session.candidate_dg_ws, "candidate")
         )
+        # Start keepalive task
+        session._candidate_keepalive = asyncio.create_task(
+            _deepgram_keepalive(session, "candidate")
+        )
         logger.info(
             f"Candidate pipeline started for {session.session_id} "
             f"({encoding}/{sample_rate})"
@@ -1527,22 +1535,94 @@ async def start_candidate_pipeline(
         })
 
 
+async def _deepgram_keepalive(session: DualSession, speaker: str) -> None:
+    """
+    Send silence bytes to Deepgram every 5s to prevent timeout disconnection.
+    Also monitors the connection and auto-reconnects if it drops.
+
+    Deepgram Flux closes after ~10-15s of no audio data.
+    Sending 160 bytes of silence (10ms at 16kHz) keeps it alive.
+    """
+    KEEPALIVE_INTERVAL = 5  # seconds
+    SILENCE_BYTES = b'\x00' * 320  # 10ms of silence at 16kHz PCM16
+    RECONNECT_DELAY = 2
+
+    while session.is_active:
+        try:
+            await asyncio.sleep(KEEPALIVE_INTERVAL)
+            if not session.is_active:
+                break
+
+            dg_ws = session.interviewer_dg_ws if speaker == "interviewer" else session.candidate_dg_ws
+
+            if dg_ws is None or dg_ws.closed:
+                logger.warning(f"[Keepalive:{speaker}] Deepgram disconnected for {session.session_id}, reconnecting...")
+                await asyncio.sleep(RECONNECT_DELAY)
+
+                if not session.is_active:
+                    break
+
+                # Reconnect
+                try:
+                    new_ws = await connect_deepgram(encoding="linear16", sample_rate=16000)
+                    if speaker == "interviewer":
+                        session.interviewer_dg_ws = new_ws
+                        if session.interviewer_recv_task:
+                            session.interviewer_recv_task.cancel()
+                        session.interviewer_recv_task = asyncio.create_task(
+                            dual_deepgram_receiver(session, new_ws, "interviewer")
+                        )
+                    else:
+                        session.candidate_dg_ws = new_ws
+                        if session.candidate_recv_task:
+                            session.candidate_recv_task.cancel()
+                        session.candidate_recv_task = asyncio.create_task(
+                            dual_deepgram_receiver(session, new_ws, "candidate")
+                        )
+                    logger.info(f"[Keepalive:{speaker}] Reconnected Deepgram for {session.session_id}")
+                    await send_to_dashboard(session, {
+                        "type": "status",
+                        "speaker": speaker,
+                        "status": "reconnected",
+                        "message": f"{speaker} Deepgram reconnected after silence timeout",
+                    })
+                except Exception as e:
+                    logger.error(f"[Keepalive:{speaker}] Reconnect failed: {e}")
+                continue
+
+            # Send keepalive silence
+            try:
+                await dg_ws.send(SILENCE_BYTES)
+            except Exception:
+                pass  # Will be caught on next loop iteration
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"[Keepalive:{speaker}] Error: {e}")
+            await asyncio.sleep(RECONNECT_DELAY)
+
+
 async def forward_mac_audio(session: DualSession, audio_bytes: bytes) -> None:
     """Forward raw PCM audio from Mac Electron to interviewer Deepgram."""
     if session.interviewer_dg_ws:
         try:
-            await session.interviewer_dg_ws.send(audio_bytes)
-        except Exception as e:
-            logger.error(f"Failed to forward Mac audio: {e}")
+            if not session.interviewer_dg_ws.closed:
+                await session.interviewer_dg_ws.send(audio_bytes)
+        except Exception:
+            # Keepalive task will handle reconnection
+            pass
 
 
 async def forward_mic_audio(session: DualSession, audio_bytes: bytes) -> None:
     """Forward raw PCM audio from Mac microphone to candidate Deepgram."""
     if session.candidate_dg_ws:
         try:
-            await session.candidate_dg_ws.send(audio_bytes)
-        except Exception as e:
-            logger.error(f"Failed to forward mic audio: {e}")
+            if not session.candidate_dg_ws.closed:
+                await session.candidate_dg_ws.send(audio_bytes)
+        except Exception:
+            # Keepalive task will handle reconnection
+            pass
 
 
 async def forward_twilio_audio_dual(session: DualSession, payload: str) -> None:
