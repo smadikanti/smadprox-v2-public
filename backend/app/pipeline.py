@@ -190,7 +190,7 @@ async def connect_deepgram(
     Connect to Deepgram Flux v2 API via WebSocket.
     Returns the WebSocket connection.
     """
-    params = "model=nova-2&smart_format=true&interim_results=true&endpointing=300"
+    params = "model=nova-2&smart_format=true&interim_results=true&endpointing=1000"
     if not containerized:
         params += f"&encoding={encoding}&sample_rate={sample_rate}"
 
@@ -1033,7 +1033,9 @@ async def dual_deepgram_receiver(
             })
 
             # Trigger suggestion when INTERVIEWER finishes speaking
-            if is_final and speaker == "interviewer":
+            # Minimum 15 words to avoid false triggers from speech fragments
+            word_count = len(transcript.split())
+            if is_final and speaker == "interviewer" and word_count >= 15:
                 # Cancel any in-progress suggestion
                 if session._suggestion_task and not session._suggestion_task.done():
                     session._suggestion_task.cancel()
@@ -1075,6 +1077,21 @@ async def dual_deepgram_receiver(
         logger.info(f"[Dual:{speaker}] Deepgram closed for {session.session_id}")
     except Exception as e:
         logger.error(f"[Dual:{speaker}] Deepgram receiver error: {e}")
+
+
+def _elapsed_time_prompt(session) -> str:
+    """Generate a time-awareness prompt so Claude knows how long the interview has been."""
+    import time as _time
+    if not session.connected_at:
+        return ""
+    elapsed_min = (_time.time() - session.connected_at) / 60
+    if elapsed_min < 20:
+        return ""
+    if elapsed_min < 30:
+        return f"\n\n[TIME: {elapsed_min:.0f} minutes elapsed. Interview is past halfway. Keep answers concise.]"
+    if elapsed_min < 40:
+        return f"\n\n[TIME: {elapsed_min:.0f} minutes elapsed. Interview is nearing the end. Suggest wrapping up soon. If the interviewer asks 'any questions?', give 1-2 strong questions only.]"
+    return f"\n\n[TIME: {elapsed_min:.0f} minutes elapsed. Interview should be wrapping up. Keep answers very brief. Suggest closing: thank the interviewer, express genuine interest, confirm next steps.]"
 
 
 def _generate_instant_filler(q_type: str, question: str, session) -> str:
@@ -1290,9 +1307,8 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
         card_buf = CardBuffer()
         card_buf.reset(is_continuation=is_continuation)
 
-        # Clear overlay for a new question
-        if session.overlay_viewers:
-            await send_to_overlay(session, {"type": "card_clear"})
+        # DON'T clear overlay — keep all cards scrollable so candidate can refer back
+        # Old cards are dimmed, new cards are highlighted
 
         # ── Groq fast-flash: fire in parallel with Claude ──
         t_flash_start = time.monotonic()
@@ -1331,7 +1347,7 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
         async for chunk in generate_coaching(
             context_docs=session.context_docs,
             conversation=session.conversation,
-            custom_prompt=session.custom_prompt,
+            custom_prompt=session.custom_prompt + _elapsed_time_prompt(session),
             last_suggestion=prev_suggestion,
             candidate_progress=candidate_said,
             last_interviewer_text=interviewer_text,
