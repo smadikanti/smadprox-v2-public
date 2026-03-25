@@ -5,7 +5,7 @@
  * addEventListener and inline onclick handlers.
  */
 
-document.addEventListener('DOMContentLoaded', () => {
+function initSetup() {
   const smadprox = window.smadprox;
 
   // ─── State ────────────────────────────────────────────────────────────────
@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ─── Step Navigation ──────────────────────────────────────────────────────
 
   function goToStep(n) {
+    console.log('[Setup] goToStep(' + n + ') called from:', new Error().stack.split('\n')[2]?.trim());
     currentStep = n;
     steps.forEach((el, i) => { if (el) el.classList.toggle('active', i === n - 1); });
     dots.forEach((el, i) => {
@@ -284,6 +285,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  $('btn-step4-back').addEventListener('click', () => goToStep(3));
+
   $('btn-stop').addEventListener('click', () => {
     if (liveAudioConnection) { liveAudioConnection.stop(); liveAudioConnection = null; }
     smadprox.stopInterview();
@@ -292,13 +295,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ─── Init ─────────────────────────────────────────────────────────────────
 
-  (async () => {
-    const setupComplete = await smadprox.storeGet('setupComplete');
-    if (setupComplete) {
-      await enumerateDevices();
-      goToStep(4);
-    } else {
-      goToStep(1);
-    }
-  })();
-});
+  // Always start at step 1 on fresh launch
+  goToStep(1);
+}
+
+// Run immediately if DOM ready, otherwise wait
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initSetup);
+} else {
+  initSetup();
+}

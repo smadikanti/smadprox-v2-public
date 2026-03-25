@@ -10,7 +10,7 @@
  *   2. overlayWindow — invisible overlay for coaching cards during interview
  */
 
-const { app, BrowserWindow, screen, globalShortcut, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, screen, globalShortcut, ipcMain, shell, systemPreferences } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 
@@ -265,7 +265,18 @@ function sendToOverlay(channel, data) {
 
 // ─── App Lifecycle ──────────────────────────────────────────────────────────
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Request microphone access from macOS BEFORE creating windows.
+  // Without this, getUserMedia returns silent streams on macOS.
+  if (process.platform === 'darwin') {
+    const micStatus = systemPreferences.getMediaAccessStatus('microphone');
+    console.log('[SmadProx] Microphone access status:', micStatus);
+    if (micStatus !== 'granted') {
+      const granted = await systemPreferences.askForMediaAccess('microphone');
+      console.log('[SmadProx] Microphone access granted:', granted);
+    }
+  }
+
   createSetupWindow();
   createOverlayWindow(); // pre-create but don't show
   registerShortcuts();
