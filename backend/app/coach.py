@@ -26,6 +26,23 @@ logger = logging.getLogger("nohuman.coach")
 
 
 # ---------------------------------------------------------------------------
+# Culture-note filter — extract only the relevant company section
+# ---------------------------------------------------------------------------
+
+def filter_culture_notes(company: str, full_notes: str) -> str:
+    """Return only the ## section matching *company* from a multi-company
+    culture-notes document.  If the company isn't found (or inputs are
+    empty), return an empty string so the prompt stays lean."""
+    if not company or not full_notes:
+        return ""
+    sections = full_notes.split("\n## ")
+    for section in sections:
+        if company.lower() in section[:200].lower():
+            return "## " + section
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # Unified Coaching System Prompt (shared by NoHuman + HumanProx)
 # ---------------------------------------------------------------------------
 
@@ -448,16 +465,47 @@ async def compress_conversation_state(
 # Prompt Builders
 # ---------------------------------------------------------------------------
 
+def _extract_company_from_docs(context_docs: list[dict]) -> str:
+    """Best-effort extraction of company name from context documents."""
+    for doc in context_docs:
+        dt = doc.get("doc_type", "")
+        if dt in ("jd", "job_description"):
+            # Company name is often the first word(s) of the JD title
+            title = doc.get("title", "")
+            if title:
+                return title.split(" - ")[0].split(" | ")[0].strip()
+        if dt == "script":
+            title = doc.get("title", doc.get("name", ""))
+            if title:
+                return title.split(" - ")[0].split("_")[0].strip()
+    return ""
+
+
 def build_context_block(context_docs: list[dict]) -> str:
-    """Format context documents into a readable block."""
+    """Format context documents into a readable block.
+
+    Culture-type documents are automatically filtered to the current
+    company's section so that irrelevant company notes don't bloat the
+    prompt and hurt TTFT.
+    """
     if not context_docs:
         return "(No context documents provided)"
+
+    company = _extract_company_from_docs(context_docs)
 
     sections = []
     for doc in context_docs:
         doc_type = doc.get("doc_type", "notes")
         title = doc.get("title", "Untitled")
         content = doc.get("content", "")
+
+        # Filter culture notes to current company only
+        if doc_type in ("culture", "culture_values", "culture_notes") and company:
+            filtered = filter_culture_notes(company, content)
+            if filtered:
+                content = filtered
+            # If no match found, keep original (might be single-company doc)
+
         sections.append(f"[{doc_type.upper()}] {title}:\n{content}")
 
     return "\n\n".join(sections)
@@ -1040,14 +1088,37 @@ async def generate_coaching(
             convo_state=convo_state,
         )
 
+        # Route simple questions to Haiku for faster TTFT
+        HAIKU_ELIGIBLE = {"quick_answer", "follow_up", "followup", "clarification", "yes_no"}
+        model = settings.CLAUDE_MODEL
+        if question_type in HAIKU_ELIGIBLE:
+            model = settings.HAIKU_MODEL
+
         async with client.messages.stream(
-            model=settings.CLAUDE_MODEL,
+            model=model,
             max_tokens=max_tokens,
             system=system,
             messages=messages,
+            extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
         ) as stream:
             async for text in stream.text_stream:
                 yield text
+
+            # Log cache stats after stream completes
+            try:
+                final_msg = await stream.get_final_message()
+                usage = final_msg.usage
+                cache_read = getattr(usage, 'cache_read_input_tokens', 0) or 0
+                cache_create = getattr(usage, 'cache_creation_input_tokens', 0) or 0
+                input_tokens = getattr(usage, 'input_tokens', 0) or 0
+                output_tokens = getattr(usage, 'output_tokens', 0) or 0
+                logger.info(
+                    f"[Cache] model={model} input={input_tokens} output={output_tokens} "
+                    f"cache_read={cache_read} cache_create={cache_create} "
+                    f"hit={'YES' if cache_read > 0 else 'no'}"
+                )
+            except Exception as cache_err:
+                logger.debug(f"[Cache] Could not read usage stats: {cache_err}")
     except anthropic.APIConnectionError as e:
         logger.error(f"Claude API connection error: {e}")
         yield "[Connection error — retrying next turn]"

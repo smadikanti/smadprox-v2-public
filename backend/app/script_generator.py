@@ -128,6 +128,7 @@ async def generate_script(
         max_tokens=16000,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
+        cache_control={"type": "ephemeral"},
     )
 
     script_content = response.content[0].text

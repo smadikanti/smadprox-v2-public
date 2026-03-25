@@ -20,6 +20,7 @@ class Settings:
     # Anthropic
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
+    HAIKU_MODEL: str = os.getenv("HAIKU_MODEL", "claude-haiku-4-5-20251001")
 
     # Groq (fast-path for low-latency initial response)
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")

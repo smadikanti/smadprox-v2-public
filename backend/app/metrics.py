@@ -82,6 +82,19 @@ class QuestionMetrics:
     operator_spoke: bool = False
     operator_card_count: int = 0
 
+    # Operator feedback (Phase 1 collection)
+    operator_relay_decision: str = ""       # "relay_as_is", "modified", "override", "skipped"
+    operator_override_reason: str = ""      # "wrong_answer", "bad_tone", etc.
+    operator_quality_score: int = 0         # 1-5
+    operator_modified_text: str = ""        # If modified, what was sent instead
+
+    # System confidence / model tracking
+    model_used: str = ""                    # "sonnet", "haiku", "groq"
+    cache_hit: bool = False                 # Was prompt cache used?
+    cache_read_tokens: int = 0             # Tokens read from cache
+    cost_input_usd: float = 0.0           # Input cost for this question
+    cost_output_usd: float = 0.0          # Output cost for this question
+
     # Errors
     errors: list[str] = field(default_factory=list)
 

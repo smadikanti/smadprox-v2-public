@@ -414,6 +414,16 @@
     .relay-card-idx { font-size: 10px; font-weight: 500; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
     .relay-card-text { font-size: 12px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.5; }
 
+    /* ── Feedback bar ── */
+    .quality-btn {
+      width: 28px; height: 28px; border-radius: var(--radius-sm);
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); font-size: 12px; font-weight: 500;
+      cursor: pointer; transition: all 0.15s; font-family: var(--font);
+    }
+    .quality-btn:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+    .quality-btn.active { background: var(--green); color: #111; border-color: var(--green); }
+
     /* ── Simulation panel ── */
     .sim-panel {
       display: none; border-top: 1px solid var(--border);
@@ -587,6 +597,29 @@
       </div>
     </div>
     <div class="card-relay-feed" id="card-relay-feed"></div>
+  </div>
+
+  <!-- Feedback bar -->
+  <div class="feedback-bar" id="feedback-bar" style="display:none; padding:8px 20px; border-top:1px solid var(--border); background:var(--bg-deep); align-items:center; gap:10px; flex-shrink:0;">
+    <span style="font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:0.06em;">Quality:</span>
+    <div style="display:flex; gap:4px;">
+      <button class="quality-btn" onclick="sendQualityFeedback(1)">1</button>
+      <button class="quality-btn" onclick="sendQualityFeedback(2)">2</button>
+      <button class="quality-btn" onclick="sendQualityFeedback(3)">3</button>
+      <button class="quality-btn" onclick="sendQualityFeedback(4)">4</button>
+      <button class="quality-btn" onclick="sendQualityFeedback(5)">5</button>
+    </div>
+    <select id="override-reason" style="display:none; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:11px; padding:4px 8px;">
+      <option value="">Why override?</option>
+      <option value="wrong_answer">Wrong answer</option>
+      <option value="bad_tone">Bad tone</option>
+      <option value="wrong_seniority">Wrong seniority</option>
+      <option value="too_long">Too long</option>
+      <option value="too_short">Too short</option>
+      <option value="off_topic">Off topic</option>
+      <option value="factually_wrong">Factually wrong</option>
+      <option value="better_story">Better story available</option>
+    </select>
   </div>
 
   <!-- Simulation panel -->
@@ -1752,6 +1785,41 @@ handleMessage = function(msg) {
   if (msg.type === 'suggestion_start') {
     relayCards = [];
     cardRelayFeed.innerHTML = '';
+  }
+};
+
+// ── Operator Quality Feedback ──
+const feedbackBar = document.getElementById('feedback-bar');
+
+function sendQualityFeedback(score) {
+  document.querySelectorAll('.quality-btn').forEach((b, i) => {
+    b.classList.toggle('active', i < score);
+  });
+  const reason = document.getElementById('override-reason');
+  if (score < 3) reason.style.display = '';
+  else reason.style.display = 'none';
+
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({
+      type: 'operator_feedback',
+      quality: score,
+      decision: score >= 4 ? 'relay_as_is' : score >= 3 ? 'modified' : 'override',
+      reason: reason?.value || '',
+    }));
+  }
+}
+
+// Show feedback bar on suggestion_end, hide on suggestion_start
+const _origHandleMsgFeedback = handleMessage;
+handleMessage = function(msg) {
+  _origHandleMsgFeedback(msg);
+  if (msg.type === 'suggestion_end') {
+    feedbackBar.style.display = 'flex';
+    // Reset buttons
+    document.querySelectorAll('.quality-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('override-reason').style.display = 'none';
+  } else if (msg.type === 'suggestion_start') {
+    feedbackBar.style.display = 'none';
   }
 };
 

@@ -1232,6 +1232,19 @@ async def dashboard_websocket(websocket: WebSocket, session_id: str):
                         f"[Dashboard] Relayed {len(cards)} cards to overlay"
                     )
 
+            elif data.get("type") == "operator_feedback":
+                if hasattr(session, '_metrics') and session._metrics.current:
+                    m = session._metrics.current
+                    m.operator_relay_decision = data.get("decision", "")
+                    m.operator_override_reason = data.get("reason", "")
+                    m.operator_quality_score = data.get("quality", 0)
+                    m.operator_modified_text = data.get("modified_text", "")[:500]
+                    m.model_used = data.get("model_used", "")
+                    logger.info(
+                        f"[Dashboard] Operator feedback: quality={m.operator_quality_score} "
+                        f"decision={m.operator_relay_decision} for {session_id}"
+                    )
+
             elif data.get("type") == "set_overlay_auto_relay":
                 session.overlay_auto_relay = bool(data.get("enabled", False))
                 logger.info(
