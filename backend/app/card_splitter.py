@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger("nohuman.cards")
 
-MAX_WORDS_PER_CARD = 80
+MAX_WORDS_PER_CARD = 55
 MIN_WORDS_TO_FLUSH = 15
 
 

@@ -175,23 +175,16 @@ function updateCard(cardId, text) {
   const body = card.querySelector('.card-body');
   if (!body) return;
 
-  // Card being updated stays in whatever highlight state it already has —
-  // no class changes needed here, just update content.
-
-  // Cross-fade: briefly dim, update text, restore
-  body.classList.add('updating');
-  setTimeout(() => {
-    // Preserve typing cursor if live
-    const isLive = card.classList.contains('live');
-    body.innerHTML = escapeHtml(text);
-    if (isLive) {
-      const cursor = document.createElement('span');
-      cursor.className = 'typing-cursor';
-      cursor.textContent = '\u258C';
-      body.appendChild(cursor);
-    }
-    body.classList.remove('updating');
-  }, 150);
+  // Update content instantly for live streaming cards (no fade delay).
+  // The 150ms fade was causing flicker with 50ms token streams.
+  const isLive = card.classList.contains('live') || card.classList.contains('current');
+  body.innerHTML = escapeHtml(text);
+  if (isLive && card.classList.contains('live')) {
+    const cursor = document.createElement('span');
+    cursor.className = 'typing-cursor';
+    cursor.textContent = '\u258C';
+    body.appendChild(cursor);
+  }
 }
 
 function highlightCard(cardId) {

@@ -152,9 +152,7 @@ body.interactive .speed-btn:hover { background: var(--gray-5); color: var(--gray
 /* ─── Card Body ─────────────────────────────────────────────────────────── */
 .card-body {
   font-size: 13.5px; line-height: 1.65; color: var(--gray-12);
-  transition: opacity 150ms ease-out;
 }
-.card-body.updating { opacity: 0.4; }
 
 /* ─── Typing Cursor ─────────────────────────────────────────────────────── */
 .typing-cursor {

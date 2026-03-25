@@ -190,7 +190,7 @@ async def connect_deepgram(
     Connect to Deepgram Flux v2 API via WebSocket.
     Returns the WebSocket connection.
     """
-    params = "model=flux-general-en"
+    params = "model=flux-general-en&utterance_end_ms=500"
     if not containerized:
         params += f"&encoding={encoding}&sample_rate={sample_rate}"
 
