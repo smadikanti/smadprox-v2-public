@@ -1555,7 +1555,7 @@ async def _deepgram_keepalive(session: DualSession, speaker: str) -> None:
 
             dg_ws = session.interviewer_dg_ws if speaker == "interviewer" else session.candidate_dg_ws
 
-            if dg_ws is None or not dg_ws.open:
+            if dg_ws is None or dg_ws.state.name != "OPEN":
                 logger.warning(f"[Keepalive:{speaker}] Deepgram disconnected for {session.session_id}, reconnecting...")
                 await asyncio.sleep(RECONNECT_DELAY)
 
@@ -1607,7 +1607,7 @@ async def forward_mac_audio(session: DualSession, audio_bytes: bytes) -> None:
     """Forward raw PCM audio from Mac Electron to interviewer Deepgram."""
     if session.interviewer_dg_ws:
         try:
-            if not session.interviewer_dg_ws.open:
+            if session.interviewer_dg_ws.state.name != "OPEN":
                 await session.interviewer_dg_ws.send(audio_bytes)
         except Exception:
             # Keepalive task will handle reconnection
@@ -1618,7 +1618,7 @@ async def forward_mic_audio(session: DualSession, audio_bytes: bytes) -> None:
     """Forward raw PCM audio from Mac microphone to candidate Deepgram."""
     if session.candidate_dg_ws:
         try:
-            if not session.candidate_dg_ws.open:
+            if session.candidate_dg_ws.state.name != "OPEN":
                 await session.candidate_dg_ws.send(audio_bytes)
         except Exception:
             # Keepalive task will handle reconnection
