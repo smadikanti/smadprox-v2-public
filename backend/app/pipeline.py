@@ -1607,10 +1607,9 @@ async def forward_mac_audio(session: DualSession, audio_bytes: bytes) -> None:
     """Forward raw PCM audio from Mac Electron to interviewer Deepgram."""
     if session.interviewer_dg_ws:
         try:
-            if session.interviewer_dg_ws.state.name != "OPEN":
+            if session.interviewer_dg_ws.state.name == "OPEN":
                 await session.interviewer_dg_ws.send(audio_bytes)
         except Exception:
-            # Keepalive task will handle reconnection
             pass
 
 
@@ -1618,10 +1617,9 @@ async def forward_mic_audio(session: DualSession, audio_bytes: bytes) -> None:
     """Forward raw PCM audio from Mac microphone to candidate Deepgram."""
     if session.candidate_dg_ws:
         try:
-            if session.candidate_dg_ws.state.name != "OPEN":
+            if session.candidate_dg_ws.state.name == "OPEN":
                 await session.candidate_dg_ws.send(audio_bytes)
         except Exception:
-            # Keepalive task will handle reconnection
             pass
 
 
