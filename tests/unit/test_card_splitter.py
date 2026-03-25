@@ -90,17 +90,14 @@ class TestMaxWords:
 
     def test_max_words(self):
         buf = CardBuffer()
-        # Build a chunk that is well over 1.5 * MAX_WORDS_PER_CARD.
-        # Include sentence-ending punctuation so _find_sentence_break can split.
+        # Simulate streaming: feed chunks incrementally (like real Claude output).
+        # Each sentence ~9 words. Feed enough to exceed 1.5x MAX_WORDS_PER_CARD.
         sentence = "This is a test sentence that has several words. "
-        # Each sentence ~9 words. We need > 82 words (55 * 1.5) to trigger.
-        long_text = sentence * 12  # ~108 words
+        for _ in range(14):  # ~126 words total, fed incrementally
+            buf.feed(sentence)
 
-        # First feed creates first card
-        buf.feed(long_text)
-
-        # If splitting worked, we should have more than one card
-        # (first push, then finalize + new push when word limit exceeded)
+        # After streaming 126 words, the splitter should have split at a sentence
+        # boundary once the buffer exceeded 1.5 * 55 = 82 words
         assert len(buf.cards) >= 2, (
             f"Expected split at ~{MAX_WORDS_PER_CARD} words but got {len(buf.cards)} card(s)"
         )
