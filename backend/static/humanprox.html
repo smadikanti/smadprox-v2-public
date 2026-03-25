@@ -445,12 +445,13 @@
       <div class="session-picker" id="session-picker"></div>
     </div>
     <div class="toolbar-sep"></div>
-    <!-- v2: Operator mic toggle -->
+    <!-- v2: Operator mic toggle + live transcript -->
     <div style="display:flex;align-items:center;gap:6px;">
       <button class="btn btn-sm" id="operator-mic-btn" onclick="toggleOperatorMic()" style="background:var(--surface);border:1px solid var(--border);font-size:11px;">
         Mic OFF
       </button>
       <span id="operator-mode-indicator" style="font-size:10px;color:var(--dim);font-weight:600;">AI DRIVING</span>
+      <div id="operator-transcript-bar" style="display:none;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--orange);padding:3px 8px;background:rgba(249,115,22,0.08);border-radius:4px;border:1px solid rgba(249,115,22,0.15);"></div>
     </div>
     <div class="toolbar-sep"></div>
 
@@ -486,6 +487,11 @@
           <div class="transcript-header cand-header"><span class="header-dot green"></span>Candidate (Mic)</div>
           <div class="transcript-body" id="cand-transcript-body"></div>
         </div>
+      </div>
+      <!-- v2: Operator speech transcript -->
+      <div id="operator-transcript-panel" style="display:none;border-top:1px solid var(--border);padding:0;">
+        <div class="transcript-header" style="color:var(--orange);"><span class="header-dot" style="background:var(--orange);"></span>You (Operator Mic)</div>
+        <div class="transcript-body" id="operator-transcript-body" style="max-height:120px;overflow-y:auto;padding:8px 12px;font-size:12px;line-height:1.6;color:#ccc;"></div>
       </div>
     </div>
 
@@ -1741,10 +1747,13 @@ async function startOperatorMic() {
     operatorDgWs = new WebSocket(dgUrl, ['token', DEEPGRAM_KEY]);
 
     operatorDgWs.onopen = () => {
+      console.log('[OperatorMic] Deepgram connected!');
       operatorMicActive = true;
       operatorMicBtn.textContent = 'Mic ON';
       operatorMicBtn.style.background = 'var(--orange)';
       operatorMicBtn.style.color = '#000';
+      document.getElementById('operator-transcript-panel').style.display = '';
+      document.getElementById('operator-transcript-body').innerHTML = '';
       operatorModeIndicator.textContent = 'YOU ARE LIVE';
       operatorModeIndicator.style.color = 'var(--orange)';
 
@@ -1792,12 +1801,47 @@ async function startOperatorMic() {
           operatorCardText += (operatorCardText ? ' ' : '') + transcript;
         }
 
+        // Show live transcript on dashboard
+        const displayText = operatorCardText + (isFinal ? '' : ' ' + transcript);
+        const bar = document.getElementById('operator-transcript-bar');
+        if (bar) { bar.textContent = displayText; bar.style.display = ''; }
+        const panel = document.getElementById('operator-transcript-panel');
+        const body = document.getElementById('operator-transcript-body');
+        if (panel) panel.style.display = '';
+        if (body) {
+          // Update the last line if still interim, append new line on final
+          const lines = body.querySelectorAll('.op-line');
+          const lastLine = lines.length ? lines[lines.length - 1] : null;
+          if (lastLine && !lastLine.dataset.final) {
+            lastLine.textContent = displayText;
+            if (isFinal) lastLine.dataset.final = '1';
+          } else if (isFinal) {
+            const div = document.createElement('div');
+            div.className = 'op-line';
+            div.dataset.final = '1';
+            div.textContent = transcript;
+            div.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
+            div.style.padding = '3px 0';
+            body.appendChild(div);
+            body.scrollTop = body.scrollHeight;
+          } else {
+            const div = document.createElement('div');
+            div.className = 'op-line';
+            div.textContent = displayText;
+            div.style.color = 'var(--orange)';
+            div.style.opacity = '0.7';
+            div.style.padding = '3px 0';
+            body.appendChild(div);
+            body.scrollTop = body.scrollHeight;
+          }
+        }
+
         // Send operator card to backend for relay to overlay
         if (ws && ws.readyState === 1) {
           ws.send(JSON.stringify({
             type: 'operator_card',
             card_id: operatorCardId,
-            text: operatorCardText + (isFinal ? '' : ' ' + transcript),
+            text: displayText,
             is_final: false,
           }));
         }
@@ -1852,6 +1896,8 @@ function stopOperatorMic() {
   operatorMicBtn.style.color = 'var(--text)';
   operatorModeIndicator.textContent = 'AI DRIVING';
   operatorModeIndicator.style.color = 'var(--dim)';
+  const bar = document.getElementById('operator-transcript-bar');
+  if (bar) { bar.textContent = ''; bar.style.display = 'none'; }
 
   clearTimeout(operatorSilenceTimer);
 
