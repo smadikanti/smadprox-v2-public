@@ -1289,6 +1289,7 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
             )
 
         full_text = ""
+        coaching_stats = {}  # Populated by generate_coaching after stream completes
         async for chunk in generate_coaching(
             context_docs=session.context_docs,
             conversation=session.conversation,
@@ -1299,6 +1300,7 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
             strategy_ctx=strategy_ctx,
             question_type=q_type,
             convo_state=session.convo_state,
+            stats_out=coaching_stats,
         ):
             if not session.is_active:
                 break
@@ -1406,6 +1408,12 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
         # Record answer metrics
         metrics.answer_text = full_text
         metrics.answer_word_count = len(full_text.split())
+
+        # Wire cache + model stats from generate_coaching into metrics
+        if coaching_stats:
+            metrics.model_used = coaching_stats.get('model_used', '')
+            metrics.cache_hit = coaching_stats.get('cache_hit', False)
+            metrics.cache_read_tokens = coaching_stats.get('cache_read_tokens', 0)
 
         # Update round-specific evolving state
         if session.round_type == "system_design":

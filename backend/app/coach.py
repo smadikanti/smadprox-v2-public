@@ -1064,6 +1064,7 @@ async def generate_coaching(
     max_tokens: int = 4096,
     question_type: str = "",
     convo_state: dict | None = None,
+    stats_out: dict | None = None,
 ) -> AsyncIterator[str]:
     """
     Unified coaching generator for both NoHuman and HumanProx.
@@ -1117,6 +1118,13 @@ async def generate_coaching(
                     f"cache_read={cache_read} cache_create={cache_create} "
                     f"hit={'YES' if cache_read > 0 else 'no'}"
                 )
+                # Populate stats_out for metrics tracking
+                if stats_out is not None:
+                    stats_out['model_used'] = model
+                    stats_out['cache_hit'] = cache_read > 0
+                    stats_out['cache_read_tokens'] = cache_read
+                    stats_out['input_tokens'] = input_tokens
+                    stats_out['output_tokens'] = output_tokens
             except Exception as cache_err:
                 logger.debug(f"[Cache] Could not read usage stats: {cache_err}")
     except anthropic.APIConnectionError as e:
