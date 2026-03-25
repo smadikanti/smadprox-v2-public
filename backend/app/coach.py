@@ -1095,12 +1095,21 @@ async def generate_coaching(
         if question_type in HAIKU_ELIGIBLE:
             model = settings.HAIKU_MODEL
 
+        # Convert system prompt to content blocks with explicit cache_control
+        # This enables prompt caching — the system prompt is cached across questions
+        system_blocks = [
+            {
+                "type": "text",
+                "text": system,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+
         async with client.messages.stream(
             model=model,
             max_tokens=max_tokens,
-            system=system,
+            system=system_blocks,
             messages=messages,
-            cache_control={"type": "ephemeral"},
         ) as stream:
             async for text in stream.text_stream:
                 yield text

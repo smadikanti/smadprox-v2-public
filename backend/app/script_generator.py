@@ -123,12 +123,16 @@ async def generate_script(
     # Call Claude Opus API
     client = AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
+    # Use explicit block-level cache_control for system prompt caching
+    system_blocks = [
+        {"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}
+    ]
+
     response = await client.messages.create(
         model="claude-opus-4-6",
         max_tokens=16000,
-        system=system_prompt,
+        system=system_blocks,
         messages=[{"role": "user", "content": user_message}],
-        cache_control={"type": "ephemeral"},
     )
 
     script_content = response.content[0].text
