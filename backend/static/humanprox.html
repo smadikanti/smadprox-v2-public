@@ -137,6 +137,48 @@
     .mode-btn:hover { color: var(--text-secondary); }
     .mode-btn.active { background: rgba(255,255,255,0.1); color: var(--text); }
 
+    /* ── Operator mic group (toolbar) ── */
+    .operator-mic-group {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .operator-mode-tag {
+      font-size: 10px; font-weight: 500; color: var(--dim);
+      padding: 3px 8px; border-radius: 4px;
+      background: var(--surface); letter-spacing: 0.03em;
+    }
+    .operator-mode-tag.live {
+      color: var(--orange); background: var(--orange-dim);
+    }
+    .btn-mic-active {
+      background: var(--orange-dim) !important;
+      border-color: rgba(245,158,11,0.3) !important;
+      color: var(--orange) !important;
+    }
+    .operator-live-bar {
+      display: none; max-width: 280px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-size: 12px; color: var(--orange);
+      padding: 4px 10px; border-radius: var(--radius-sm);
+      background: var(--orange-dim); border: 1px solid rgba(245,158,11,0.12);
+    }
+
+    /* ── Operator transcript panel (left sidebar) ── */
+    .operator-panel {
+      display: none; flex-shrink: 0;
+      border-top: 1px solid var(--border);
+      max-height: 160px; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    .operator-panel .transcript-body {
+      max-height: 120px; overflow-y: auto;
+      font-size: 13px; line-height: 1.6; color: var(--text-secondary);
+    }
+    .op-header { color: var(--orange); }
+    .op-line {
+      padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.02);
+      animation: fadeIn 0.15s ease-out;
+    }
+
     /* ── Main content ── */
     .main { display: flex; flex: 1; overflow: hidden; }
     .transcript-panel {
@@ -344,65 +386,68 @@
     }
     .card-relay-header {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 6px 12px; background: rgba(59,130,246,0.06);
-      font-size: 11px; font-weight: 600; flex-shrink: 0;
+      padding: 8px 20px; background: var(--bg-deep);
+      font-size: 11px; font-weight: 500; flex-shrink: 0;
       border-bottom: 1px solid var(--border);
+      color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em;
     }
     .card-relay-feed {
-      display: flex; gap: 6px; padding: 8px 12px;
+      display: flex; gap: 8px; padding: 10px 20px;
       overflow-x: auto; overflow-y: hidden; flex: 1;
     }
     .card-relay-feed::-webkit-scrollbar { height: 3px; }
-    .card-relay-feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+    .card-relay-feed::-webkit-scrollbar-track { background: transparent; }
+    .card-relay-feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 2px; }
     .relay-card {
-      min-width: 180px; max-width: 260px; flex-shrink: 0;
+      min-width: 200px; max-width: 280px; flex-shrink: 0;
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); padding: 8px 10px;
-      font-size: 11px; line-height: 1.5; color: var(--text);
-      cursor: pointer; transition: border-color 0.15s, background 0.15s;
-      display: flex; flex-direction: column; gap: 4px;
+      border-radius: var(--radius); padding: 10px 14px;
+      font-size: 12px; line-height: 1.6; color: var(--text);
+      cursor: pointer; transition: all 0.15s;
+      display: flex; flex-direction: column; gap: 6px;
     }
-    .relay-card:hover { border-color: var(--accent); background: var(--surface-hover); }
-    .relay-card.sent { border-color: var(--green); opacity: 0.6; }
-    .relay-card.whiteboard { border-left: 3px solid #eab308; }
-    .relay-card-idx { font-size: 9px; font-weight: 600; color: var(--dim); text-transform: uppercase; }
-    .relay-card-text { font-size: 11px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .relay-card:hover { border-color: rgba(255,255,255,0.15); background: var(--surface-hover); }
+    .relay-card.sent { border-color: var(--green); opacity: 0.5; }
+    .relay-card.whiteboard { border-left: 2px solid #eab308; }
+    .relay-card-idx { font-size: 10px; font-weight: 500; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
+    .relay-card-text { font-size: 12px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.5; }
 
     /* ── Simulation panel ── */
     .sim-panel {
       display: none; border-top: 1px solid var(--border);
-      background: rgba(201,100,66,0.04); flex-shrink: 0;
+      background: var(--bg-deep); flex-shrink: 0;
     }
     .sim-panel.open { display: block; }
     .sim-header {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 8px 14px; cursor: pointer;
+      padding: 10px 20px; cursor: pointer;
     }
-    .sim-header span { font-size: 10px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
-    .sim-body { padding: 0 14px 10px; }
-    .sim-input-row { display: flex; gap: 6px; margin-bottom: 8px; }
+    .sim-header span { font-size: 11px; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
+    .sim-body { padding: 0 20px 12px; }
+    .sim-input-row { display: flex; gap: 8px; margin-bottom: 10px; }
     .sim-input {
       flex: 1; background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); color: var(--text); font-size: 12px;
-      padding: 6px 10px; outline: none; font-family: inherit;
+      border-radius: var(--radius-sm); color: var(--text); font-size: 13px;
+      padding: 8px 12px; outline: none; font-family: var(--font);
+      transition: border-color 0.15s;
     }
-    .sim-input:focus { border-color: var(--accent); }
-    .sim-input::placeholder { color: #444; }
-    .sim-presets { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+    .sim-input:focus { border-color: rgba(255,255,255,0.2); }
+    .sim-input::placeholder { color: #3a3a3a; }
+    .sim-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
     .sim-preset {
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: 20px; color: var(--text-secondary); font-size: 10px;
-      padding: 3px 10px; cursor: pointer; transition: all 0.15s;
+      border-radius: 20px; color: var(--text-secondary); font-size: 11px;
+      padding: 5px 14px; cursor: pointer; transition: all 0.15s;
       white-space: nowrap;
     }
-    .sim-preset:hover { border-color: var(--accent); color: var(--text); }
+    .sim-preset:hover { border-color: rgba(255,255,255,0.15); color: var(--text); background: var(--surface-hover); }
     .sim-auto-row {
-      display: flex; align-items: center; gap: 8px; padding-top: 6px;
-      border-top: 1px solid rgba(255,255,255,0.04);
+      display: flex; align-items: center; gap: 10px; padding-top: 8px;
+      border-top: 1px solid var(--border);
     }
-    .sim-auto-row label { font-size: 10px; color: var(--dim); }
+    .sim-auto-row label { font-size: 11px; color: var(--dim); }
     .sim-timer {
-      font-size: 10px; color: var(--accent); font-weight: 600;
+      font-size: 11px; color: var(--text-secondary); font-weight: 500;
       font-variant-numeric: tabular-nums;
     }
 
@@ -463,12 +508,10 @@
     </div>
     <div class="toolbar-sep"></div>
     <!-- v2: Operator mic toggle + live transcript -->
-    <div style="display:flex;align-items:center;gap:6px;">
-      <button class="btn btn-sm" id="operator-mic-btn" onclick="toggleOperatorMic()" style="background:var(--surface);border:1px solid var(--border);font-size:11px;">
-        Mic OFF
-      </button>
-      <span id="operator-mode-indicator" style="font-size:10px;color:var(--dim);font-weight:600;">AI DRIVING</span>
-      <div id="operator-transcript-bar" style="display:none;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--orange);padding:3px 8px;background:rgba(249,115,22,0.08);border-radius:4px;border:1px solid rgba(249,115,22,0.15);"></div>
+    <div class="operator-mic-group">
+      <button class="btn btn-sm" id="operator-mic-btn" onclick="toggleOperatorMic()">Mic OFF</button>
+      <span id="operator-mode-indicator" class="operator-mode-tag">AI DRIVING</span>
+      <div id="operator-transcript-bar" class="operator-live-bar"></div>
     </div>
     <div class="toolbar-sep"></div>
 
@@ -506,9 +549,9 @@
         </div>
       </div>
       <!-- v2: Operator speech transcript -->
-      <div id="operator-transcript-panel" style="display:none;border-top:1px solid var(--border);padding:0;">
-        <div class="transcript-header" style="color:var(--orange);"><span class="header-dot" style="background:var(--orange);"></span>You (Operator Mic)</div>
-        <div class="transcript-body" id="operator-transcript-body" style="max-height:120px;overflow-y:auto;padding:8px 12px;font-size:12px;line-height:1.6;color:#ccc;"></div>
+      <div id="operator-transcript-panel" class="operator-panel">
+        <div class="transcript-header op-header"><span class="header-dot" style="background:var(--orange);"></span>You (Operator Mic)</div>
+        <div class="transcript-body" id="operator-transcript-body"></div>
       </div>
     </div>
 
@@ -1767,12 +1810,12 @@ async function startOperatorMic() {
       console.log('[OperatorMic] Deepgram connected!');
       operatorMicActive = true;
       operatorMicBtn.textContent = 'Mic ON';
-      operatorMicBtn.style.background = 'var(--orange)';
-      operatorMicBtn.style.color = '#000';
-      document.getElementById('operator-transcript-panel').style.display = '';
+      operatorMicBtn.classList.add('btn-mic-active');
+      const opPanel = document.getElementById('operator-transcript-panel');
+      if (opPanel) opPanel.style.display = 'flex';
       document.getElementById('operator-transcript-body').innerHTML = '';
       operatorModeIndicator.textContent = 'YOU ARE LIVE';
-      operatorModeIndicator.style.color = 'var(--orange)';
+      operatorModeIndicator.classList.add('live');
 
       // Notify backend
       if (ws && ws.readyState === 1) {
@@ -1880,7 +1923,7 @@ async function startOperatorMic() {
           setTimeout(() => {
             if (operatorMicActive && !operatorCardId) {
               operatorModeIndicator.textContent = 'AI DRIVING';
-              operatorModeIndicator.style.color = 'var(--dim)';
+              operatorModeIndicator.classList.remove('live');
               if (ws && ws.readyState === 1) {
                 ws.send(JSON.stringify({ type: 'operator_speak_end' }));
               }
@@ -1909,10 +1952,9 @@ async function startOperatorMic() {
 function stopOperatorMic() {
   operatorMicActive = false;
   operatorMicBtn.textContent = 'Mic OFF';
-  operatorMicBtn.style.background = 'var(--surface)';
-  operatorMicBtn.style.color = 'var(--text)';
+  operatorMicBtn.classList.remove('btn-mic-active');
   operatorModeIndicator.textContent = 'AI DRIVING';
-  operatorModeIndicator.style.color = 'var(--dim)';
+  operatorModeIndicator.classList.remove('live');
   const bar = document.getElementById('operator-transcript-bar');
   if (bar) { bar.textContent = ''; bar.style.display = 'none'; }
 
