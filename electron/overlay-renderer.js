@@ -66,7 +66,7 @@ function escapeHtml(text) {
  */
 function createCardEl(data) {
   const card = document.createElement('div');
-  const type = data.is_filler ? 'filler' : data.is_operator ? 'operator' : 'ai';
+  const type = data.is_question ? 'question' : data.is_filler ? 'filler' : data.is_operator ? 'operator' : 'ai';
   const isLive = data.is_operator && !data.is_final;
 
   card.className = `feed-card ${type}`;
@@ -95,6 +95,9 @@ function createCardEl(data) {
   } else if (type === 'filler') {
     dot.classList.add('filler');
     label.textContent = 'Bridge';
+  } else if (type === 'question') {
+    dot.classList.add('question');
+    label.textContent = 'Question';
   }
 
   header.appendChild(dot);

@@ -1242,7 +1242,7 @@ function createCoachEntry(question, isContinuation) {
   entries.push(entry);
   activeIdx = idx;
   updateCounter();
-  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Don't auto-scroll — operator should control their own scroll position
   return entry;
 }
 
@@ -1253,7 +1253,6 @@ function rerenderEntry(idx) {
   entry.status = 'generating';
   entry.answerEl.innerHTML = '<span class="coach-blink"></span>';
   activeIdx = idx;
-  entry.el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   return entry;
 }
 
@@ -1313,7 +1312,6 @@ function showFlash(text) {
   flashEl.textContent = text;
   flashEl.style.display = 'block';
   flashEl.style.opacity = '0.8';
-  coachFeed.scrollTop = coachFeed.scrollHeight;
 }
 function hideFlash() {
   if (flashEl) {

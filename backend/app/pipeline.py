@@ -1032,6 +1032,36 @@ async def dual_deepgram_receiver(
                 "turn_index": turn_index,
             })
 
+            # Live-fill interviewer question on overlay (red box, grows as they speak)
+            if speaker == "interviewer" and session.overlay_viewers:
+                if not is_final:
+                    # Interim — create or update the live question card
+                    if not hasattr(session, '_live_question_pushed') or not session._live_question_pushed:
+                        await send_to_overlay(session, {
+                            "type": "card_push",
+                            "card_id": "live-question",
+                            "text": transcript,
+                            "index": 0, "total": 0,
+                            "is_whiteboard": False, "is_continuation": False,
+                            "is_final": False, "is_filler": False, "is_question": True,
+                        })
+                        session._live_question_pushed = True
+                    else:
+                        await send_to_overlay(session, {
+                            "type": "card_update",
+                            "card_id": "live-question",
+                            "text": transcript,
+                        })
+                else:
+                    # Final — update with full text, reset for next question
+                    if hasattr(session, '_live_question_pushed') and session._live_question_pushed:
+                        await send_to_overlay(session, {
+                            "type": "card_update",
+                            "card_id": "live-question",
+                            "text": transcript,
+                        })
+                    session._live_question_pushed = False
+
             # Trigger suggestion when INTERVIEWER finishes speaking
             # Minimum 5 words to avoid false triggers from single-word fragments
             word_count = len(transcript.split())
@@ -1302,6 +1332,8 @@ async def generate_dual_suggestion(session: DualSession, last_interviewer_text: 
             "is_continuation": is_continuation,
             "question": interviewer_text,
         })
+
+        # Question is already live-streamed to overlay via the transcript handler above
 
         # Prepare card buffer for overlay viewers
         card_buf = CardBuffer()
