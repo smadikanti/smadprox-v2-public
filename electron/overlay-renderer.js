@@ -137,19 +137,12 @@ function createCardEl(data) {
 }
 
 /**
- * Centralized dimming: the single `.current` card gets full opacity + highlight,
- * all other non-demoted cards get `.previous` (40% opacity),
- * demoted cards keep `.demoted` (30% opacity, handled by CSS).
+ * All cards stay at full opacity — candidate can read any card.
+ * Only demoted fillers get reduced opacity.
+ * The .current card gets a subtle highlight border to show what's newest.
  */
 function refreshCardDimming() {
-  const allCards = feedCards.querySelectorAll('.feed-card');
-  allCards.forEach(card => {
-    if (card.classList.contains('current')) {
-      card.classList.remove('previous');
-    } else if (!card.classList.contains('demoted')) {
-      card.classList.add('previous');
-    }
-  });
+  // No dimming — all cards stay fully visible
 }
 
 function addCard(data) {
