@@ -1045,38 +1045,79 @@ async def dual_deepgram_receiver(
                 })
 
             # Trigger suggestion when INTERVIEWER finishes speaking
-            # Minimum 5 words to avoid false triggers from single-word fragments
+            # DEBOUNCED: accumulate question fragments, push fillers,
+            # only generate real answer after 3s of silence (no more EndOfTurns).
+            # This prevents generating from partial questions when interviewer pauses mid-sentence.
             word_count = len(transcript.split())
-            if is_final and speaker == "interviewer" and word_count >= 5:
-                # Cancel any in-progress suggestion
-                if session._suggestion_task and not session._suggestion_task.done():
-                    session._suggestion_task.cancel()
-                    await send_to_dashboard(session, {"type": "suggestion_cancelled"})
+            if is_final and speaker == "interviewer" and word_count >= 3:
 
-                # Store last interviewer text
-                session.last_interviewer_text = transcript
+                # Accumulate the full question (multiple EndOfTurns build up)
+                if not hasattr(session, '_accumulated_question'):
+                    session._accumulated_question = ""
+                    session._filler_count = 0
 
-                # Build candidate progress (include any in-progress turn)
-                candidate_said = session.candidate_progress
-                if session._candidate_current_turn:
-                    if candidate_said:
-                        candidate_said += " " + session._candidate_current_turn
-                    else:
-                        candidate_said = session._candidate_current_turn
+                session._accumulated_question += (" " if session._accumulated_question else "") + transcript
+                session._filler_count = getattr(session, '_filler_count', 0) + 1
+                session.last_interviewer_text = session._accumulated_question
 
-                # Only generate if transcript is meaningful (>3 words)
-                if len(transcript.split()) >= 3:
-                    if session.gen_auto:
-                        session._suggestion_task = asyncio.create_task(
-                            generate_dual_suggestion(session, transcript)
-                        )
-                    else:
-                        # Manual mode: buffer the question, notify dashboard
-                        session._pending_interviewer_text = transcript
-                        await send_to_dashboard(session, {
-                            "type": "generation_ready",
-                            "question": transcript,
-                        })
+                # Push a numbered filler to overlay while waiting
+                filler_num = session._filler_count
+                filler_texts = [
+                    "Yeah, so...",
+                    "Right, so thinking about that...",
+                    "That's a good point, so...",
+                    "Interesting, let me think about that...",
+                    "So in terms of that...",
+                ]
+                filler_text = filler_texts[min(filler_num - 1, len(filler_texts) - 1)]
+
+                if session.overlay_viewers and filler_num <= 3:
+                    import uuid as _uuid
+                    await send_to_overlay(session, {
+                        "type": "card_push",
+                        "card_id": f"filler-{_uuid.uuid4().hex[:6]}",
+                        "text": filler_text,
+                        "index": 0, "total": 0,
+                        "is_whiteboard": False, "is_continuation": False,
+                        "is_final": False, "is_filler": True,
+                        "instruction": f"Filler {filler_num} — say this while we wait for the full question",
+                        "estimated_seconds": 3,
+                    })
+
+                # Cancel any pending generation debounce
+                if hasattr(session, '_debounce_task') and session._debounce_task and not session._debounce_task.done():
+                    session._debounce_task.cancel()
+
+                # Schedule generation after 3s of silence
+                async def _debounced_generate(s, question_text):
+                    try:
+                        await asyncio.sleep(3.0)  # Wait 3 seconds for more speech
+                        # No new EndOfTurn arrived — this is the full question
+                        if s._suggestion_task and not s._suggestion_task.done():
+                            s._suggestion_task.cancel()
+
+                        logger.info(f"[Dual] Debounced generation after 3s silence: {question_text[:60]}...")
+
+                        if s.gen_auto:
+                            s._suggestion_task = asyncio.create_task(
+                                generate_dual_suggestion(s, question_text)
+                            )
+                        else:
+                            s._pending_interviewer_text = question_text
+                            await send_to_dashboard(s, {
+                                "type": "generation_ready",
+                                "question": question_text,
+                            })
+
+                        # Reset accumulator for next question
+                        s._accumulated_question = ""
+                        s._filler_count = 0
+                    except asyncio.CancelledError:
+                        pass  # New EndOfTurn arrived, will re-debounce
+
+                session._debounce_task = asyncio.create_task(
+                    _debounced_generate(session, session._accumulated_question)
+                )
 
             # If candidate starts speaking while suggestion is generating, cancel it
             if speaker == "candidate" and flux_event == "StartOfTurn":
