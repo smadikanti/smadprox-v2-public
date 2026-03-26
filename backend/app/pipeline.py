@@ -1033,9 +1033,9 @@ async def dual_deepgram_receiver(
             })
 
             # Trigger suggestion when INTERVIEWER finishes speaking
-            # Minimum 15 words to avoid false triggers from speech fragments
+            # Minimum 5 words to avoid false triggers from single-word fragments
             word_count = len(transcript.split())
-            if is_final and speaker == "interviewer" and word_count >= 15:
+            if is_final and speaker == "interviewer" and word_count >= 5:
                 # Cancel any in-progress suggestion
                 if session._suggestion_task and not session._suggestion_task.done():
                     session._suggestion_task.cancel()

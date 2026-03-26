@@ -745,6 +745,9 @@ def build_coaching_prompt(
     continuation_block = build_continuation_block(
         last_suggestion, candidate_progress, last_interviewer_text
     )
+    # NOTE: continuation_block is DYNAMIC (changes every question).
+    # For prompt caching, it must go in MESSAGES, not in SYSTEM prompt.
+    # The system prompt must be identical across all questions in a session.
 
     q_type = question_type or _detect_question_type(last_interviewer_text or "")
 
@@ -761,7 +764,7 @@ def build_coaching_prompt(
                 spoken_rules=spoken,
                 strategy_brief=brief,
                 design_state=ds,
-                continuation_block=continuation_block,
+                continuation_block="",  # moved to messages for cache stability
             )
         elif round_type == "behavioral":
             told = strategy_ctx.get("stories_told", [])
@@ -771,7 +774,7 @@ def build_coaching_prompt(
                 spoken_rules=spoken,
                 stories_told=told_str,
                 strategy_brief=brief,
-                continuation_block=continuation_block,
+                continuation_block="",  # moved to messages for cache stability
             )
         elif round_type == "technical_coding":
             cs = _format_coding_state(strategy_ctx.get("coding_state", {}))
@@ -780,14 +783,14 @@ def build_coaching_prompt(
                 spoken_rules=spoken,
                 coding_state=cs,
                 strategy_brief=brief,
-                continuation_block=continuation_block,
+                continuation_block="",  # moved to messages for cache stability
             )
         elif round_type == "recruiter_screen":
             system = RECRUITER_SCREEN_PROMPT.format(
                 shared_voice=_SHARED_VOICE_RULES,
                 spoken_rules=spoken,
                 strategy_brief=brief,
-                continuation_block=continuation_block,
+                continuation_block="",  # moved to messages for cache stability
             )
         else:
             context_block = f"[PRE-COMPILED STRATEGY BRIEF]\n{brief}"
@@ -795,7 +798,7 @@ def build_coaching_prompt(
             system = COACHING_SYSTEM_PROMPT.format(
                 context_documents=context_block,
                 custom_prompt=custom_block,
-                continuation_block=continuation_block,
+                continuation_block="",  # moved to messages for cache stability
             )
     elif q_type and q_type != "general" and q_type in _FORMAT_MAP:
         # Progressive disclosure: slim prompt with only the relevant format
@@ -848,6 +851,11 @@ Continue naturally from the bridge. What should they say next?"""
 The interviewer just said: "{last_interviewer_text}"
 {type_hint}
 Generate what the candidate should say next. Write ONLY the words to speak — first person, no bullet points, no commentary."""
+
+    # Prepend continuation block to user message (not system prompt)
+    # This keeps the system prompt static for prompt caching
+    if continuation_block:
+        user_message = continuation_block + "\n\n" + user_message
 
     messages = [{"role": "user", "content": user_message}]
 
