@@ -221,7 +221,7 @@ function connectOverlay() {
   if (ws) { try { ws.close(); } catch (_) {} }
 
   const wsProto = serverUrl.startsWith('https') ? 'wss' : 'ws';
-  const wsHost = serverUrl.replace(/^https?:\/\//, '');
+  const wsHost = serverUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '');
   const url = `${wsProto}://${wsHost}/ws/overlay/${candidateId}`;
 
   ws = new WebSocket(url);

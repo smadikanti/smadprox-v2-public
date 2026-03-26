@@ -97,7 +97,7 @@ async function connectAudioStreams(opts) {
   const sysStream = await navigator.mediaDevices.getDisplayMedia({ video: false, audio: true });
 
   const wsProto = serverUrl.startsWith('https') ? 'wss' : 'ws';
-  const wsHost = serverUrl.replace(/^https?:\/\//, '');
+  const wsHost = serverUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '');
 
   const sysWs = new WebSocket(`${wsProto}://${wsHost}/ws/mac/${sessionId}`);
   const micWs = new WebSocket(`${wsProto}://${wsHost}/ws/mic/${sessionId}`);
